@@ -1,0 +1,17 @@
+# Windows-specific requirements to avoid compilation issues
+# Use this file if you encounter compilation problems with the main requirements.txt
+
+discord.py==2.3.2
+python-dotenv==1.0.0
+# Use newer OpenAI client that has better Python 3.13 support
+openai>=1.12.0
+asyncio-mqtt==0.16.1
+aiohttp==3.9.1
+# Use pure Python alternatives
+msgspec==0.19.0
+httpx==0.25.2
+typing-extensions==4.8.0
+
+# Alternative approach: if you still have issues, try these pure Python packages
+# openai>=1.12.0  # Newer version with better Python 3.13 support
+# pydantic>=2.0.0  # Only if you need it directly
