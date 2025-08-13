@@ -122,14 +122,17 @@ class AIEmployeeAppBot(commands.Bot):
             
             await channel.send(embed=embed)
             
-            # Log conversation
-            await self.db.log_conversation(
-                employee.id,
-                user_id,
-                channel.id,
-                message_content,
-                response
-            )
+            # Log conversation (don't notify user if logging fails)
+            try:
+                await self.db.log_conversation(
+                    employee.id,
+                    user_id,
+                    channel.id,
+                    message_content,
+                    response
+                )
+            except Exception as log_error:
+                print(f"Error logging conversation: {log_error}")
             
         except Exception as e:
             print(f"Error sending message as employee: {e}")

@@ -19,33 +19,36 @@ async def create_sample_employees():
     # Sample employee configurations
     sample_employees = [
         {
-            "name": "Alice",
+            "name": "Darah",
             "type": "SUPPORT",
             "parameters": {
                 "temperature": 0.8,
                 "max_tokens": 1000,
                 "model": "gpt-3.5-turbo",
-                "personality": "friendly, empathetic, and patient customer support specialist"
+                "personality": "friendly, empathetic, and patient customer support specialist",
+                "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"
             }
         },
         {
-            "name": "Bob",
+            "name": "Elody",
             "type": "SALES",
             "parameters": {
                 "temperature": 0.9,
                 "max_tokens": 1200,
                 "model": "gpt-3.5-turbo",
-                "personality": "enthusiastic, persuasive, and knowledgeable sales representative"
+                "personality": "enthusiastic, persuasive, and knowledgeable sales representative",
+                "assistant_id": "asst_wHy7ZjCy4RyFJJ9BB1qhvZXx"
             }
         },
         {
-            "name": "Charlie",
+            "name": "Yusera",
             "type": "TECH",
             "parameters": {
                 "temperature": 0.6,
                 "max_tokens": 1500,
                 "model": "gpt-3.5-turbo",
-                "personality": "technical, precise, and methodical IT support specialist"
+                "personality": "technical, precise, and methodical IT support specialist",
+                "assistant_id": "asst_DrzAePXPBtWfe4ikWwEJ5ypm"
             }
         }
     ]
@@ -87,7 +90,7 @@ async def show_next_steps():
     print("• !send_as <employee> <channel> <message>")
     print("• !help_ai")
     print("\nQuick Test:")
-    print("Once running, try: @Alice Hello! How can you help me?")
+    print("Once running, try: @Darah Hello! How can you help me?")
 
 async def main():
     """Main quick start function"""

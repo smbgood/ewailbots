@@ -1,12 +1,13 @@
 [
   {
-    "name": "Alice",
+    "name": "Darah",
     "type": "SUPPORT",
     "parameters": {
       "temperature": 0.8,
       "max_tokens": 1000,
       "model": "gpt-3.5-turbo",
-      "personality": "friendly, empathetic, and patient customer support specialist"
+      "personality": "friendly, empathetic, and patient customer support specialist",
+      "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"
     }
   },
   {

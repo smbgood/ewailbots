@@ -231,9 +231,14 @@ class EmployeeCommands(commands.Cog):
     @commands.command(name="send_as")
     async def send_as(self, ctx, employee_name: str, channel: discord.TextChannel, *, message: str):
         """Send a message as a specific AI employee to a channel"""
-        success = await self.bot.send_message_as_employee(
-            channel, employee_name, message
-        )
+        try:
+            success = await self.bot.send_message_as_employee(
+                channel, employee_name, message, ctx.author.id
+            )
+        except TypeError:
+            success = await self.bot.send_message_as_employee(
+                channel, employee_name, message
+            )
         
         if success:
             await ctx.send(f"✅ Message sent as '{employee_name}' to {channel.mention}")
@@ -522,14 +527,20 @@ class ChatGroup(commands.Cog):
     @chat.command(name="message")
     async def chat_message(self, ctx, employee: str, *, message: str):
         try:
-            await self.bot.send_message_as_employee(ctx.channel, employee, message)
+            try:
+                await self.bot.send_message_as_employee(ctx.channel, employee, message, ctx.author.id)
+            except TypeError:
+                await self.bot.send_message_as_employee(ctx.channel, employee, message)
         except Exception as e:
             await ctx.send(f"❌ Error chatting with employee: {str(e)}")
 
     @chat.command(name="ask")
     async def chat_ask(self, ctx, employee: str, *, question: str):
         try:
-            await self.bot.send_message_as_employee(ctx.channel, employee, question)
+            try:
+                await self.bot.send_message_as_employee(ctx.channel, employee, question, ctx.author.id)
+            except TypeError:
+                await self.bot.send_message_as_employee(ctx.channel, employee, question)
         except Exception as e:
             await ctx.send(f"❌ Error asking question: {str(e)}")
 

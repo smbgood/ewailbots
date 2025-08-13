@@ -152,14 +152,14 @@ DEFAULT_AI_PARAMS = {
 ### Direct Interaction
 Use the `@` prefix to talk to AI employees directly:
 ```
-@Alice Hello! How can you help me today?
+@Darah Hello! How can you help me today?
 @Bob What's the weather like?
 ```
 
 ### Sending Messages as Employees
 Moderators can send messages as specific employees:
 ```
-!send_as Alice #general Hello everyone! I'm here to help with support questions.
+!send_as Darah #general Hello everyone! I'm here to help with support questions.
 !dm_as Bob @user Welcome to our server!
 ```
 
@@ -167,13 +167,13 @@ Moderators can send messages as specific employees:
 
 ### Creating an Employee
 ```
-!create_employee Alice SUPPORT {"temperature": 0.8, "personality": "friendly and empathetic"}
+!create_employee Darah SUPPORT {"temperature": 0.8, "personality": "friendly and empathetic", "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"}
 ```
 
 ### Bulk Employee Creation
 ```
 !bulk_create [
-  {"name": "Alice", "type": "SUPPORT", "parameters": {"temperature": 0.8}},
+  {"name": "Darah", "type": "SUPPORT", "parameters": {"temperature": 0.8, "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"}},
   {"name": "Bob", "type": "SALES", "parameters": {"temperature": 0.9}},
   {"name": "Charlie", "type": "TECH", "parameters": {"temperature": 0.6}}
 ]
@@ -181,7 +181,7 @@ Moderators can send messages as specific employees:
 
 ### Updating Parameters
 ```
-!update_employee Alice {"temperature": 0.9, "max_tokens": 1500}
+!update_employee Darah {"temperature": 0.9, "max_tokens": 1500}
 ```
 
 ## 🔐 Permission Levels

@@ -11,11 +11,14 @@ class DatabaseManager:
             raise ValueError("Supabase URL and anon key must be configured")
         
         self.supabase_url = Config.SUPABASE_URL.rstrip('/')
-        self.supabase_key = Config.SUPABASE_ANON_KEY
+        # Prefer service role key (bypasses RLS) if available; fall back to anon key
+        self.supabase_key = Config.SUPABASE_SERVICE_ROLE_KEY or Config.SUPABASE_ANON_KEY
+        print(f"🔐 Supabase auth mode: {'service_role' if Config.SUPABASE_SERVICE_ROLE_KEY else 'anon'}")
         self.headers = {
             'apikey': self.supabase_key,
             'Authorization': f'Bearer {self.supabase_key}',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
         }
         # Note: init_database is not needed for Supabase as tables are created via migrations
     
@@ -57,20 +60,21 @@ class DatabaseManager:
         """
         pass
     
-    async def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
+    async def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, headers_override: Optional[Dict[str, str]] = None) -> Optional[Dict]:
         """Make HTTP request to Supabase"""
         url = f"{self.supabase_url}/rest/v1/{endpoint}"
+        req_headers = self.headers if headers_override is None else {**self.headers, **headers_override}
         
         async with httpx.AsyncClient() as client:
             try:
                 if method.upper() == 'GET':
-                    response = await client.get(url, headers=self.headers)
+                    response = await client.get(url, headers=req_headers)
                 elif method.upper() == 'POST':
-                    response = await client.post(url, headers=self.headers, json=data)
+                    response = await client.post(url, headers=req_headers, json=data)
                 elif method.upper() == 'PUT':
-                    response = await client.put(url, headers=self.headers, json=data)
+                    response = await client.put(url, headers=req_headers, json=data)
                 elif method.upper() == 'PATCH':
-                    response = await client.patch(url, headers=self.headers, json=data)
+                    response = await client.patch(url, headers=req_headers, json=data)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
                 
@@ -92,11 +96,13 @@ class DatabaseManager:
                 'employee_type': employee_type,
                 'parameters': parameters,
                 'is_active': True,
-                'created_at': datetime.utcnow().isoformat(),
                 'last_used': datetime.utcnow().isoformat()
             }
-            
-            result = await self._make_request('POST', 'ai_employees', data)
+            # Upsert on unique name to avoid duplicate errors and make quick start idempotent
+            upsert_headers = {
+                'Prefer': 'return=representation,resolution=merge-duplicates'
+            }
+            result = await self._make_request('POST', 'ai_employees?on_conflict=name', data, headers_override=upsert_headers)
             return result is not None
             
         except Exception as e:

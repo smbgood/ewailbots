@@ -1,10 +1,17 @@
 import os
 from typing import List, Dict, Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 # Load environment variables
 print("🔧 Loading configuration from environment variables...")
-load_dotenv()
+dotenv_path = find_dotenv(usecwd=True)
+load_dotenv(dotenv_path=dotenv_path)
+if dotenv_path:
+    try:
+        print(f"📄 .env loaded from: {dotenv_path}")
+    except Exception:
+        # Avoid encoding issues on some consoles
+        pass
 
 class Config:
     # Discord Application Configuration (OAuth2/Application Commands)
@@ -26,6 +33,9 @@ class Config:
     print(f"   GUILD_ID: {'✅ Set' if GUILD_ID else '❌ Missing (optional)'}")
     print(f"   OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Missing'}")
     print(f"   SUPABASE_URL: {'✅ Set' if os.getenv('SUPABASE_URL') else '❌ Missing (optional)'}")
+    # Do not print keys themselves; only signal presence for debugging
+    print(f"   SUPABASE_ANON_KEY: {'✅ Set' if os.getenv('SUPABASE_ANON_KEY') else '❌ Missing'}")
+    print(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅ Set' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else '❌ Missing'}")
     
     # Admin Configuration
     ADMIN_USER_IDS: List[int] = [
