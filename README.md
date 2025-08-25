@@ -36,7 +36,7 @@ This project now supports two types of Discord bots:
 1. **Clone the repository**
    ```bash
    git clone <your-repo-url>
-   cd ewaildiscord
+   cd ewailbots
    ```
 
 2. **Install dependencies**

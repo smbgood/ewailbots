@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 import json
 from config import Config
 
@@ -96,7 +97,10 @@ class SocialCommands(commands.Cog):
             embed.add_field(name="Status", value=created.get("status", status), inline=True)
             embed.set_footer(text=f"Post ID: {created.get('id')}")
 
-            await ctx.send(embed=embed)
+            # Add Approve/Reject buttons
+            view = SocialPostView(self.bot, created.get('id'), created.get('requested_by_user_id'), created.get('account_key'))
+            msg = await ctx.send(embed=embed, view=view)
+            view.set_message(msg)
 
         except Exception as e:
             await ctx.send(f"❌ Error creating social post: {str(e)}")
@@ -691,3 +695,157 @@ async def setup(bot):
     await bot.add_cog(ChatGroup(bot))
     await bot.add_cog(AdminGroup(bot))
     await bot.add_cog(SocialCommands(bot))
+
+
+class SocialPostView(discord.ui.View):
+    def __init__(self, bot, post_id: int, requested_by_user_id: int, account_key: str, timeout: Optional[float] = 600):
+        super().__init__(timeout=timeout)
+        self.bot = bot
+        self.post_id = post_id
+        self.requested_by_user_id = requested_by_user_id
+        self.account_key = account_key
+        self.message: Optional[discord.Message] = None
+
+    def set_message(self, message: discord.Message):
+        self.message = message
+
+    async def _ensure_permissions(self, interaction: discord.Interaction) -> bool:
+        # Allow moderators; optionally restrict to the requester
+        has_perm = await self.bot.check_permissions(interaction, Config.PERMISSION_LEVELS["MODERATOR"]) if hasattr(self.bot, 'check_permissions') else True
+        if not has_perm:
+            await interaction.response.send_message("❌ You don't have permission to manage this post.", ephemeral=True)
+            return False
+        return True
+
+    async def _update_status_field(self, new_status: str):
+        if not self.message:
+            return
+        try:
+            embed = self.message.embeds[0] if self.message.embeds else None
+            if not embed:
+                return
+            # Rebuild embed with updated status
+            new_embed = discord.Embed(title=embed.title, description=embed.description, color=embed.color)
+            for field in embed.fields:
+                if field.name.lower() == "status":
+                    new_embed.add_field(name=field.name, value=new_status, inline=field.inline)
+                else:
+                    new_embed.add_field(name=field.name, value=field.value, inline=field.inline)
+            new_embed.set_footer(text=embed.footer.text if embed.footer else "")
+            await self.message.edit(embed=new_embed, view=self)
+        except Exception as e:
+            print(f"Failed to update embed status: {e}")
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_permissions(interaction):
+            return
+        # Show a choice: Publish Now or Schedule...
+        await interaction.response.send_message(
+            "Choose when to publish:",
+            view=ScheduleOrNowView(self.bot, self.post_id, self._update_status_field),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_permissions(interaction):
+            return
+        updated = await self.bot.db.set_social_post_status(self.post_id, "cancelled")
+        if updated:
+            await self._update_status_field("cancelled")
+            await interaction.response.send_message("🛑 Post has been cancelled.", ephemeral=True)
+            # Disable buttons after cancel
+            self.disable_all_items()
+            if self.message:
+                await self.message.edit(view=self)
+        else:
+            await interaction.response.send_message("❌ Failed to cancel post.", ephemeral=True)
+
+
+class ScheduleOrNowView(discord.ui.View):
+    def __init__(self, bot, post_id: int, status_updater):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.post_id = post_id
+        self.status_updater = status_updater
+
+    @discord.ui.button(label="Now", style=discord.ButtonStyle.primary)
+    async def publish_now(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Publish immediately
+        post = await self.bot.db.get_social_post_by_id(self.post_id)
+        if not post:
+            await interaction.response.send_message("❌ Post not found.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        success = await self.bot.publish_social_post(post)
+        if success:
+            await self.bot.db.set_social_post_status(self.post_id, "published")
+            await self.status_updater("published")
+            await interaction.followup.send("✅ Post published now.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Failed to publish post.", ephemeral=True)
+
+    @discord.ui.button(label="Schedule...", style=discord.ButtonStyle.secondary)
+    async def schedule(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SchedulePostModal(self.bot, self.post_id, self.status_updater))
+
+
+class SchedulePostModal(discord.ui.Modal, title="Schedule Post"):
+    when_input = discord.ui.TextInput(
+        label="When",
+        placeholder="YYYY-MM-DD HH:MM (UTC) or 'now'",
+        required=False,
+        max_length=64
+    )
+
+    def __init__(self, bot, post_id: int, status_updater):
+        super().__init__()
+        self.bot = bot
+        self.post_id = post_id
+        self.status_updater = status_updater
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = (str(self.when_input.value) or "").strip().lower()
+        if raw in ("", "now"):
+            # Immediate publish
+            post = await self.bot.db.get_social_post_by_id(self.post_id)
+            if not post:
+                await interaction.response.send_message("❌ Post not found.", ephemeral=True)
+                return
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            success = await self.bot.publish_social_post(post)
+            if success:
+                await self.bot.db.set_social_post_status(self.post_id, "published")
+                await self.status_updater("published")
+                await interaction.followup.send("✅ Post published now.", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Failed to publish post.", ephemeral=True)
+            return
+
+        # Parse datetime
+        dt = None
+        try:
+            try:
+                # Try ISO 8601 with or without 'T'
+                cleaned = raw.replace('t', ' ').replace('z', '')
+                dt = datetime.fromisoformat(cleaned)
+            except Exception:
+                pass
+            if dt is None:
+                # Try common "YYYY-MM-DD HH:MM" pattern
+                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+            # Assume naive is UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            await interaction.response.send_message("❌ Invalid datetime. Use YYYY-MM-DD HH:MM (UTC) or 'now'.", ephemeral=True)
+            return
+
+        iso = dt.astimezone(timezone.utc).isoformat()
+        updated = await self.bot.db.set_social_post_status(self.post_id, "scheduled", iso)
+        if updated:
+            await self.status_updater("scheduled")
+            await interaction.response.send_message(f"🗓️ Post scheduled for {iso}.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Failed to schedule post.", ephemeral=True)

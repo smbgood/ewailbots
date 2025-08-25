@@ -297,3 +297,54 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error creating social post: {e}")
             return None
+
+    async def get_social_post_by_id(self, post_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch a single social post by id."""
+        try:
+            url = f"{self.supabase_url}/rest/v1/social_posts?id=eq.{post_id}"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                result = response.json()
+            if result:
+                return result[0]
+            return None
+        except Exception as e:
+            print(f"Error getting social post {post_id}: {e}")
+            return None
+
+    async def update_social_post(self, post_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a social post and return the updated row."""
+        try:
+            url = f"{self.supabase_url}/rest/v1/social_posts?id=eq.{post_id}"
+            async with httpx.AsyncClient() as client:
+                response = await client.patch(url, headers=self.headers, json=updates)
+                response.raise_for_status()
+                result = response.json()
+            if isinstance(result, list) and result:
+                return result[0]
+            return result
+        except Exception as e:
+            print(f"Error updating social post {post_id}: {e}")
+            return None
+
+    async def set_social_post_status(self, post_id: int, status: str, scheduled_for: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Convenience to set status (and optionally scheduled_for) on a post."""
+        updates: Dict[str, Any] = {"status": status}
+        if scheduled_for is not None:
+            updates["scheduled_for"] = scheduled_for
+        return await self.update_social_post(post_id, updates)
+
+    async def list_due_social_posts(self) -> List[Dict[str, Any]]:
+        """Return posts that are scheduled and due to publish now or earlier."""
+        try:
+            # Use lt.now() filter for due items
+            url = f"{self.supabase_url}/rest/v1/social_posts?status=eq.scheduled&scheduled_for=lt.now()"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                result = response.json()
+            return result or []
+        except Exception as e:
+            print(f"Error listing due social posts: {e}")
+            return []

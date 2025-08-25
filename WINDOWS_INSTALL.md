@@ -31,7 +31,7 @@ The original dependencies (`asyncpg` and `pydantic`) have compilation issues on 
 
 ```cmd
 git clone <your-repo-url>
-cd ewaildiscord
+cd ewailbots
 ```
 
 Or download and extract the ZIP file.
