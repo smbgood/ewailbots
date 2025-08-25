@@ -11,6 +11,7 @@ A powerful Discord bot that manages multiple AI "employees" with different perso
 - **Conversation History**: Track and manage AI employee interactions
 - **Bulk Operations**: Create multiple employees at once with JSON configuration
 - **Real-time Management**: Activate/deactivate employees and update parameters on the fly
+ - **Social Posting**: Draft, schedule, and publish to Instagram and Facebook Pages
 
 ## 🚀 Quick Start
 
@@ -192,11 +193,12 @@ Moderators can send messages as specific employees:
 
 ## 🗄️ Database
 
-The bot uses SQLite to store:
+The bot uses Supabase to store:
 - AI employee configurations
 - User permissions
 - Conversation history
 - Employee statistics
+- Social accounts and posts
 
 ## 🛠️ Customization
 
@@ -276,3 +278,29 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## 📞 Support
 
 If you need help setting up or using the bot, please check the Discord documentation or open an issue in the repository.
+
+## 📣 Social Posting
+
+This project supports Instagram and Facebook Page posting using the Facebook Graph API.
+
+### Configure Social Accounts (Supabase)
+
+Insert rows into the `social_accounts` table with `account_key`, `platform`, and `credentials` JSON. See `supabase_migration.sql`.
+
+Instagram `credentials` expected fields:
+- `access_token`
+- `ig_business_account_id`
+
+Facebook Page `credentials` expected fields:
+- `page_id`
+- `page_access_token` (or `access_token`)
+
+Graph API version is configurable via env: `FACEBOOK_GRAPH_API_VERSION` (default `v23.0`).
+
+### Create Draft via Discord
+
+```
+!social "<prompt>" <account_key> <employee_name> <true|false|image_url> [draft|scheduled]
+```
+
+- Supports `platform` values `instagram` and `facebook` (Page), determined by the `social_accounts` row.

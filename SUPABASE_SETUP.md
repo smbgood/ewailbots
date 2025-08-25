@@ -42,6 +42,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Facebook/Instagram Graph API
+FACEBOOK_GRAPH_API_VERSION=v23.0
 ```
 
 ## Step 4: Create Database Tables
@@ -67,7 +70,7 @@ python run_bot.py
 
 ## Database Schema
 
-The migration creates three main tables:
+The migration creates core tables and social posting tables:
 
 ### `ai_employees`
 - Stores AI employee configurations
@@ -81,6 +84,14 @@ The migration creates three main tables:
 ### `conversations`
 - Logs all AI employee interactions
 - Enables analytics and debugging
+
+### `social_accounts`
+- Configured social accounts (Instagram or Facebook Page)
+- Stores credentials JSON
+
+### `social_posts`
+- Drafts, scheduled, and published posts
+- References `social_accounts`
 
 ## Security Features
 

@@ -216,6 +216,8 @@ class AIEmployeeBot(commands.Bot):
         platform = (post.get("platform") or "").lower()
         if platform == "instagram":
             return await self._publish_instagram(post)
+        if platform == "facebook":
+            return await self._publish_facebook_page(post)
         # Other platforms can be added here
         return False
 
@@ -249,7 +251,7 @@ class AIEmployeeBot(commands.Bot):
                     return True
 
                 media_resp = await client.post(
-                    f"https://graph.facebook.com/v19.0/{ig_business_account_id}/media",
+                    f"https://graph.facebook.com/{Config.FACEBOOK_GRAPH_API_VERSION}/{ig_business_account_id}/media",
                     data=media_params
                 )
                 media_resp.raise_for_status()
@@ -259,7 +261,7 @@ class AIEmployeeBot(commands.Bot):
 
                 # Step 2: Publish media
                 publish_resp = await client.post(
-                    f"https://graph.facebook.com/v19.0/{ig_business_account_id}/media_publish",
+                    f"https://graph.facebook.com/{Config.FACEBOOK_GRAPH_API_VERSION}/{ig_business_account_id}/media_publish",
                     data={"creation_id": creation_id, "access_token": access_token}
                 )
                 publish_resp.raise_for_status()
@@ -269,6 +271,54 @@ class AIEmployeeBot(commands.Bot):
             return False
         except Exception as e:
             print(f"Instagram publish error: {e}")
+            return False
+
+    async def _publish_facebook_page(self, post: Dict[str, Any]) -> bool:
+        """Publish a post to a Facebook Page using Graph API. Supports text and image URL."""
+        try:
+            account_key = post.get("account_key")
+            account = await self.db.get_social_account(account_key)
+            if not account:
+                print(f"Facebook account not found for key {account_key}")
+                return False
+            credentials = account.get("credentials") or {}
+            page_access_token = credentials.get("page_access_token") or credentials.get("access_token")
+            page_id = credentials.get("page_id")
+            message = post.get("caption") or post.get("prompt") or ""
+            image_url = post.get("image_url") if (post.get("image_mode") == "url") else None
+
+            # If credentials are incomplete, simulate success in dev
+            if not page_access_token or not page_id:
+                print("Facebook Page credentials incomplete; simulating publish success.")
+                return True
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                if image_url:
+                    # Photos endpoint supports message + url
+                    resp = await client.post(
+                        f"https://graph.facebook.com/{Config.FACEBOOK_GRAPH_API_VERSION}/{page_id}/photos",
+                        data={
+                            "url": image_url,
+                            "caption": message,
+                            "access_token": page_access_token
+                        }
+                    )
+                else:
+                    # Feed endpoint for text-only posts
+                    resp = await client.post(
+                        f"https://graph.facebook.com/{Config.FACEBOOK_GRAPH_API_VERSION}/{page_id}/feed",
+                        data={
+                            "message": message,
+                            "access_token": page_access_token
+                        }
+                    )
+                resp.raise_for_status()
+                return True
+        except httpx.HTTPError as e:
+            print(f"Facebook HTTP error: {e}")
+            return False
+        except Exception as e:
+            print(f"Facebook publish error: {e}")
             return False
 
 # Create bot instance

@@ -8,6 +8,7 @@ from config import Config
 # Import bot instance
 # Note: The bot instance will be provided by the loader via the setup(bot) function.
 
+
 class SocialCommands(commands.Cog):
     """Commands for creating social media posts (drafts, scheduling, publishing)"""
 
@@ -32,14 +33,14 @@ class SocialCommands(commands.Cog):
         - status: default 'draft' (others reserved)
         """
         try:
-            # Validate account exists and is Instagram for now
+            # Validate account exists
             account = await self.bot.db.get_social_account(account_key)
             if not account:
                 await ctx.send(f"❌ Social account '{account_key}' not found or inactive.")
                 return
             platform = (account.get("platform") or "").lower()
-            if platform != "instagram":
-                await ctx.send("❌ Currently only Instagram accounts are supported for this command.")
+            if platform not in ("instagram", "facebook"):
+                await ctx.send("❌ Currently only Instagram and Facebook Page accounts are supported for this command.")
                 return
 
             # Validate employee
@@ -60,8 +61,12 @@ class SocialCommands(commands.Cog):
                 image_mode = "url"
                 image_url = image
 
-            # Generate caption using employee (simple, can be expanded per platform guidelines)
-            caption_prompt = f"Write an Instagram caption for this prompt. Keep it concise and engaging. Prompt: {prompt}"
+            # Generate caption using employee (platform-aware prompt)
+            platform_nice = "Instagram" if platform == "instagram" else "Facebook Page"
+            caption_prompt = (
+                f"Write a {platform_nice} post caption for this prompt. "
+                f"Keep it concise, engaging, and appropriate for {platform_nice}. Prompt: {prompt}"
+            )
             caption = await employee.generate_response(caption_prompt)
 
             # Create draft post in DB
@@ -88,7 +93,7 @@ class SocialCommands(commands.Cog):
             embed = discord.Embed(
                 title="📝 Social Post Draft Created",
                 color=discord.Color.blurple(),
-                description=f"Draft for **{account_key}** (Instagram)"
+                description=f"Draft for **{account_key}** ({platform_nice})"
             )
             embed.add_field(name="Prompt", value=prompt[:256] + ("..." if len(prompt) > 256 else ""), inline=False)
             embed.add_field(name="Caption (generated)", value=caption[:1024] + ("..." if len(caption) > 1024 else ""), inline=False)
@@ -104,6 +109,8 @@ class SocialCommands(commands.Cog):
 
         except Exception as e:
             await ctx.send(f"❌ Error creating social post: {str(e)}")
+
+
 class AdminCommands(commands.Cog):
     """Admin commands for managing AI employees and permissions"""
     
@@ -238,6 +245,7 @@ class AdminCommands(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error in bulk creation: {str(e)}")
 
+
 class EmployeeCommands(commands.Cog):
     """Commands for managing and interacting with AI employees"""
     
@@ -358,6 +366,7 @@ class EmployeeCommands(commands.Cog):
         except discord.Forbidden:
             await ctx.send(f"❌ Cannot send DM to {user.mention}. They may have DMs disabled.")
 
+
 class UserCommands(commands.Cog):
     """Basic user commands"""
     
@@ -417,6 +426,7 @@ class UserCommands(commands.Cog):
         
         await ctx.send(embed=embed)
 
+
 class UtilityCommands(commands.Cog):
     """Utility commands for the bot"""
     
@@ -448,6 +458,7 @@ class UtilityCommands(commands.Cog):
         await ctx.send(embed=embed)
 
 # Note: setup for these cogs is defined at the bottom alongside grouped command cogs
+
 
 class AIGroup(commands.Cog):
     """Grouped AI employee commands using the !ai prefix"""
@@ -689,6 +700,7 @@ class AdminGroup(commands.Cog):
         embed.add_field(name="Admin Users", value=len(Config.ADMIN_USER_IDS), inline=True)
         embed.add_field(name="AI Model", value=Config.DEFAULT_AI_PARAMS["model"], inline=True)
         await ctx.send(embed=embed)
+
 
 async def setup(bot):
     await bot.add_cog(AIGroup(bot))

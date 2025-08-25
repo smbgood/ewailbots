@@ -73,3 +73,12 @@ class Config:
         "TECH": "Technical support",
         "GENERAL": "General assistant"
     }
+
+    # Facebook/Instagram Graph API
+    FACEBOOK_GRAPH_API_VERSION = os.getenv('FACEBOOK_GRAPH_API_VERSION', 'v23.0')
+
+    # Log selected Graph API version
+    try:
+        print(f"   FACEBOOK_GRAPH_API_VERSION: {FACEBOOK_GRAPH_API_VERSION}")
+    except Exception:
+        pass
