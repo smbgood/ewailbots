@@ -63,3 +63,57 @@ CREATE POLICY "Allow authenticated users to manage user_permissions" ON user_per
 
 CREATE POLICY "Allow authenticated users to manage conversations" ON conversations
     FOR ALL USING (auth.role() = 'authenticated');
+
+-- Social media integration tables
+-- Stores configured social media accounts (e.g., Instagram)
+CREATE TABLE IF NOT EXISTS social_accounts (
+    id BIGSERIAL PRIMARY KEY,
+    account_key TEXT UNIQUE NOT NULL,          -- e.g., 'EW-Insta'
+    platform TEXT NOT NULL,                    -- e.g., 'instagram'
+    display_name TEXT,
+    credentials JSONB,                         -- API credentials/config (secure role should access)
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Stores social posts (drafts, scheduled, published)
+CREATE TABLE IF NOT EXISTS social_posts (
+    id BIGSERIAL PRIMARY KEY,
+    account_key TEXT NOT NULL REFERENCES social_accounts(account_key) ON UPDATE CASCADE,
+    platform TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',      -- 'draft' | 'scheduled' | 'published' | 'cancelled'
+    prompt TEXT,                               -- original prompt provided by user
+    caption TEXT,                              -- generated or provided caption/text
+    image_mode TEXT DEFAULT 'none',            -- 'none' | 'generate' | 'url'
+    image_url TEXT,                            -- when image_mode = 'url'
+    employee_name TEXT,                        -- AI employee assigned
+    requested_by_user_id BIGINT,               -- Discord user id
+    scheduled_for TIMESTAMP WITH TIME ZONE,    -- optional schedule time
+    meta JSONB,                                -- additional metadata
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for social tables
+CREATE INDEX IF NOT EXISTS idx_social_accounts_platform ON social_accounts(platform);
+CREATE INDEX IF NOT EXISTS idx_social_accounts_active ON social_accounts(is_active);
+CREATE INDEX IF NOT EXISTS idx_social_posts_account_key ON social_posts(account_key);
+CREATE INDEX IF NOT EXISTS idx_social_posts_status ON social_posts(status);
+CREATE INDEX IF NOT EXISTS idx_social_posts_created_at ON social_posts(created_at);
+
+-- Enable RLS
+ALTER TABLE social_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE social_posts ENABLE ROW LEVEL SECURITY;
+
+-- Read policies (adjust as needed)
+CREATE POLICY "Allow public read access to social_accounts" ON social_accounts
+    FOR SELECT USING (true);
+
+CREATE POLICY "Allow public read access to social_posts" ON social_posts
+    FOR SELECT USING (true);
+
+-- Authenticated manage policies
+CREATE POLICY "Allow authenticated users to manage social_accounts" ON social_accounts
+    FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow authenticated users to manage social_posts" ON social_posts
+    FOR ALL USING (auth.role() = 'authenticated');

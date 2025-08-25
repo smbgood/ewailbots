@@ -269,3 +269,31 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error logging conversation: {e}")
             return False
+
+    # --- Social media integration methods ---
+    async def get_social_account(self, account_key: str) -> Optional[Dict[str, Any]]:
+        """Fetch a social account configuration by account_key (must be active)."""
+        try:
+            url = f"{self.supabase_url}/rest/v1/social_accounts?account_key=eq.{account_key}&is_active=eq.true"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                result = response.json()
+            if result:
+                return result[0]
+            return None
+        except Exception as e:
+            print(f"Error getting social account '{account_key}': {e}")
+            return None
+
+    async def create_social_post(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create a social post record (typically in draft). Returns created row."""
+        try:
+            result = await self._make_request('POST', 'social_posts', data)
+            # Supabase returns an array of rows by default for inserts
+            if isinstance(result, list) and result:
+                return result[0]
+            return result
+        except Exception as e:
+            print(f"Error creating social post: {e}")
+            return None

@@ -7,6 +7,99 @@ from config import Config
 # Import bot instance
 # Note: The bot instance will be provided by the loader via the setup(bot) function.
 
+class SocialCommands(commands.Cog):
+    """Commands for creating social media posts (drafts, scheduling, publishing)"""
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def cog_check(self, ctx):
+        """Require moderator permissions for social posting"""
+        return await self.bot.check_permissions(ctx, Config.PERMISSION_LEVELS["MODERATOR"])
+
+    @commands.command(name="social")
+    async def social(self, ctx, prompt: str, account_key: str, employee_name: str, image: str, status: str = "draft"):
+        """Create a social media post draft.
+
+        Usage:
+        !social "<prompt>" <account_key> <employee_name> <true|false|image_url> [draft|scheduled]
+
+        - prompt: caption generation prompt or text
+        - account_key: configured social account key (e.g., EW-Insta)
+        - employee_name: AI employee to generate content
+        - image: 'true' to generate, 'false' for no image, or a direct image URL
+        - status: default 'draft' (others reserved)
+        """
+        try:
+            # Validate account exists and is Instagram for now
+            account = await self.bot.db.get_social_account(account_key)
+            if not account:
+                await ctx.send(f"❌ Social account '{account_key}' not found or inactive.")
+                return
+            platform = (account.get("platform") or "").lower()
+            if platform != "instagram":
+                await ctx.send("❌ Currently only Instagram accounts are supported for this command.")
+                return
+
+            # Validate employee
+            employee = await self.bot.employee_manager.get_employee(employee_name)
+            if not employee:
+                await ctx.send(f"❌ Employee '{employee_name}' not found.")
+                return
+
+            # Determine image mode and possible URL
+            image_mode = "none"
+            image_url = None
+            normalized = (image or "").strip().lower()
+            if normalized == "true":
+                image_mode = "generate"
+            elif normalized == "false":
+                image_mode = "none"
+            else:
+                image_mode = "url"
+                image_url = image
+
+            # Generate caption using employee (simple, can be expanded per platform guidelines)
+            caption_prompt = f"Write an Instagram caption for this prompt. Keep it concise and engaging. Prompt: {prompt}"
+            caption = await employee.generate_response(caption_prompt)
+
+            # Create draft post in DB
+            data = {
+                "account_key": account_key,
+                "platform": platform,
+                "status": status or "draft",
+                "prompt": prompt,
+                "caption": caption,
+                "image_mode": image_mode,
+                "image_url": image_url,
+                "employee_name": employee_name,
+                "requested_by_user_id": ctx.author.id,
+                "meta": {
+                    "channel_id": ctx.channel.id
+                }
+            }
+
+            created = await self.bot.db.create_social_post(data)
+            if not created:
+                await ctx.send("❌ Failed to create social post draft.")
+                return
+
+            embed = discord.Embed(
+                title="📝 Social Post Draft Created",
+                color=discord.Color.blurple(),
+                description=f"Draft for **{account_key}** (Instagram)"
+            )
+            embed.add_field(name="Prompt", value=prompt[:256] + ("..." if len(prompt) > 256 else ""), inline=False)
+            embed.add_field(name="Caption (generated)", value=caption[:1024] + ("..." if len(caption) > 1024 else ""), inline=False)
+            embed.add_field(name="Employee", value=employee_name, inline=True)
+            embed.add_field(name="Image", value=(image_mode if image_mode != "url" else f"url: {image_url}"), inline=True)
+            embed.add_field(name="Status", value=created.get("status", status), inline=True)
+            embed.set_footer(text=f"Post ID: {created.get('id')}")
+
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            await ctx.send(f"❌ Error creating social post: {str(e)}")
 class AdminCommands(commands.Cog):
     """Admin commands for managing AI employees and permissions"""
     
@@ -597,3 +690,4 @@ async def setup(bot):
     await bot.add_cog(AIGroup(bot))
     await bot.add_cog(ChatGroup(bot))
     await bot.add_cog(AdminGroup(bot))
+    await bot.add_cog(SocialCommands(bot))
