@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
 import json
 from config import Config
@@ -460,6 +460,135 @@ class UtilityCommands(commands.Cog):
 # Note: setup for these cogs is defined at the bottom alongside grouped command cogs
 
 
+class MeetingCommands(commands.Cog):
+    """Commands to orchestrate multi-employee meetings"""
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def cog_check(self, ctx):
+        """Require moderator permissions for meetings"""
+        return await self.bot.check_permissions(ctx, Config.PERMISSION_LEVELS["MODERATOR"])
+
+    @commands.command(name="meeting")
+    async def meeting(self, ctx, participants: str, rounds: int, *, topic: str):
+        """Run a structured meeting between AI employees.
+
+        Usage:
+        !meeting <name1,name2,...> <rounds> "<topic/context>"
+        """
+        # Parse and validate participants
+        names: List[str] = [n.strip() for n in (participants or "").split(",") if n.strip()]
+        if len(names) < 2:
+            await ctx.send("❌ Please provide at least two participant names, separated by commas.")
+            return
+        if not isinstance(rounds, int) or rounds < 1 or rounds > 10:
+            await ctx.send("❌ Rounds must be an integer between 1 and 10.")
+            return
+
+        # Resolve employees
+        employees = []
+        missing = []
+        for name in names:
+            emp = await self.bot.employee_manager.get_employee(name)
+            if not emp:
+                missing.append(name)
+            else:
+                employees.append(emp)
+
+        if missing:
+            await ctx.send(f"❌ The following employees were not found or inactive: {', '.join(missing)}")
+            return
+
+        # Announce meeting start
+        start_embed = discord.Embed(
+            title="🧑‍💼🤖 AI Meeting Started",
+            description=f"Topic: {topic}",
+            color=discord.Color.blurple()
+        )
+        start_embed.add_field(name="Participants", value=", ".join(names), inline=False)
+        start_embed.add_field(name="Rounds", value=str(rounds), inline=True)
+        await ctx.send(embed=start_embed)
+
+        # Shared meeting context for system prompt
+        colleagues = ", ".join(names)
+        system_context = (
+            f"You are participating in a structured, time-boxed meeting with AI colleagues: {colleagues}.\n"
+            f"Focus: {topic}\n\n"
+            "Guidelines:\n"
+            "- Be concise (<= 150 words) and concrete.\n"
+            "- Build on prior comments; avoid repetition.\n"
+            "- Address colleagues by name when relevant.\n"
+            "- Offer specific recommendations, assumptions, and risks.\n"
+        )
+
+        transcript: List[Tuple[str, str]] = []  # (speaker, text)
+
+        # Run meeting rounds
+        for r in range(1, rounds + 1):
+            for emp in employees:
+                # Compile recent transcript for context (limit to last 8 entries to keep prompts manageable)
+                if transcript:
+                    recent = transcript[-8:]
+                    transcript_text = "\n".join([f"{speaker}: {text}" for speaker, text in recent])
+                else:
+                    transcript_text = "(none yet)"
+
+                prompt_lines = [
+                    f"Round {r}/{rounds}.",
+                    "Transcript so far:",
+                    transcript_text,
+                    "",
+                    f"Your turn, {emp.name}. Provide your contribution for this round."
+                ]
+                if r == rounds:
+                    prompt_lines.append(
+                        "In this final turn, briefly summarize your viewpoint and propose 3-5 concrete action items."
+                    )
+                prompt = "\n".join(prompt_lines)
+
+                # Generate response
+                try:
+                    response_text = await emp.generate_response(prompt, context=system_context)
+                except TypeError:
+                    response_text = await emp.generate_response(prompt)
+
+                transcript.append((emp.name, response_text))
+
+                # Send response embed
+                response_embed = discord.Embed(
+                    title=f"Round {r} — {emp.name}",
+                    description=response_text,
+                    color=discord.Color.blue()
+                )
+                await ctx.send(embed=response_embed)
+
+        # Optional overall summary using the first participant
+        try:
+            full_transcript = "\n".join([f"{s}: {t}" for s, t in transcript])
+            summary_prompt = (
+                f"Full transcript below. Summarize the meeting on '{topic}' into 5 concise bullets, "
+                f"then list 5 next actions with suggested owners chosen from: {colleagues}.\n\n"
+                f"Transcript:\n{full_transcript}"
+            )
+            overall = await employees[0].generate_response(summary_prompt, context=system_context)
+        except Exception:
+            overall = None
+
+        end_embed = discord.Embed(
+            title="✅ Meeting Concluded",
+            description=f"Topic: {topic}",
+            color=discord.Color.green()
+        )
+        if overall:
+            # Discord embed description limit safeguard
+            end_embed.add_field(
+                name="Summary & Next Actions",
+                value=(overall[:1000] + ("..." if len(overall) > 1000 else "")),
+                inline=False
+            )
+        await ctx.send(embed=end_embed)
+
 class AIGroup(commands.Cog):
     """Grouped AI employee commands using the !ai prefix"""
 
@@ -707,6 +836,7 @@ async def setup(bot):
     await bot.add_cog(ChatGroup(bot))
     await bot.add_cog(AdminGroup(bot))
     await bot.add_cog(SocialCommands(bot))
+    await bot.add_cog(MeetingCommands(bot))
 
 
 class SocialPostView(discord.ui.View):

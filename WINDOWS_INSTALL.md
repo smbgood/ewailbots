@@ -62,7 +62,7 @@ pip install -r requirements.txt
 pip install -r requirements_windows.txt
 
 # Or install packages individually
-pip install discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.12.0 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
+pip install discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.99.9 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
 ```
 
 The installation scripts will automatically try multiple approaches to avoid compilation errors!
@@ -101,7 +101,7 @@ openai==1.3.7        # Old version with problematic pydantic dependency
 ```txt
 httpx==0.25.2        # Pure Python HTTP client
 msgspec==0.19.0      # Pure Python JSON library
-openai>=1.12.0       # Newer version with better Python 3.13 support
+openai>=1.99.9       # Newer version with Responses/Conversations support
 # Removed: supabase, pydantic, asyncpg
 # Updated: openai to newer version
 ```
@@ -136,12 +136,12 @@ error: the configured Python interpreter version (3.13) is newer than PyO3's max
 
 3. **Use newer OpenAI version**:
    ```cmd
-   pip install openai>=1.12.0
+   pip install openai>=1.99.9
    ```
 
 4. **Install packages individually**:
    ```cmd
-   pip install discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.12.0 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
+   pip install discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.99.9 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
    ```
 
 ### "pip install failed"

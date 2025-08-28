@@ -98,7 +98,7 @@ The bot comes with predefined employee types:
 DEFAULT_AI_PARAMS = {
     "temperature": 0.7,
     "max_tokens": 1000,
-    "model": "gpt-3.5-turbo",
+    "model": "gpt-4.1-mini",
     "personality": "helpful and professional"
 }
 ```
@@ -168,13 +168,13 @@ Moderators can send messages as specific employees:
 
 ### Creating an Employee
 ```
-!create_employee Darah SUPPORT {"temperature": 0.8, "personality": "friendly and empathetic", "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"}
+!create_employee Darah SUPPORT {"temperature": 0.8, "personality": "friendly and empathetic", "model": "gpt-4.1-mini"}
 ```
 
 ### Bulk Employee Creation
 ```
 !bulk_create [
-  {"name": "Darah", "type": "SUPPORT", "parameters": {"temperature": 0.8, "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"}},
+  {"name": "Darah", "type": "SUPPORT", "parameters": {"temperature": 0.8, "model": "gpt-4.1-mini"}},
   {"name": "Bob", "type": "SALES", "parameters": {"temperature": 0.9}},
   {"name": "Charlie", "type": "TECH", "parameters": {"temperature": 0.6}}
 ]

@@ -5,9 +5,8 @@
     "parameters": {
       "temperature": 0.8,
       "max_tokens": 1000,
-      "model": "gpt-3.5-turbo",
-      "personality": "friendly, empathetic, and patient customer support specialist",
-      "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"
+      "model": "gpt-4.1-mini",
+      "personality": "friendly, empathetic, and patient customer support specialist"
     }
   },
   {
@@ -16,7 +15,7 @@
     "parameters": {
       "temperature": 0.9,
       "max_tokens": 1200,
-      "model": "gpt-3.5-turbo",
+      "model": "gpt-4.1-mini",
       "personality": "enthusiastic, persuasive, and knowledgeable sales representative"
     }
   },
@@ -26,7 +25,7 @@
     "parameters": {
       "temperature": 0.6,
       "max_tokens": 1500,
-      "model": "gpt-3.5-turbo",
+      "model": "gpt-4.1-mini",
       "personality": "technical, precise, and methodical IT support specialist"
     }
   },
@@ -36,7 +35,7 @@
     "parameters": {
       "temperature": 0.7,
       "max_tokens": 1000,
-      "model": "gpt-3.5-turbo",
+      "model": "gpt-4.1-mini",
       "personality": "helpful, informative, and versatile general assistant"
     }
   },
@@ -46,7 +45,7 @@
     "parameters": {
       "temperature": 0.75,
       "max_tokens": 800,
-      "model": "gpt-3.5-turbo",
+      "model": "gpt-4.1-mini",
       "personality": "professional, efficient, and solution-oriented support agent"
     }
   }

@@ -13,18 +13,22 @@ class AIEmployee:
         self.conversation_history = []
         self.db = DatabaseManager()
         
-        # OpenAI client and Assistants support
+        # OpenAI client and Responses/Conversations support
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+        # assistant_id kept for backward compatibility with older configs; no longer used
         self.assistant_id: Optional[str] = self.parameters.get("assistant_id")
-        self.thread_id: Optional[str] = None
+        # Server-managed conversation for context with Responses API
+        self.conversation_id: Optional[str] = None
     
     async def generate_response(self, message: str, context: str = "") -> str:
-        """Generate a response using OpenAI. Uses Assistants API if assistant_id is set; otherwise falls back to Chat Completions."""
+        """Generate a response using OpenAI Responses API with Conversations.
+
+        Notes:
+        - Prior implementation used Assistants/Threads; migrated to Responses + Conversations.
+        - "assistant_id" parameter is accepted for backward compatibility but ignored.
+        """
         try:
-            if self.assistant_id:
-                ai_response = await self._generate_response_with_assistant(message, context)
-            else:
-                ai_response = await self._generate_response_with_chat_completions(message, context)
+            ai_response = await self._generate_response_with_responses_api(message, context)
 
             # Update conversation history
             self.conversation_history.append({
@@ -42,90 +46,68 @@ class AIEmployee:
             print(f"Error generating AI response: {e}")
             return f"I apologize, but I'm experiencing technical difficulties. Please try again later. (Error: {str(e)})"
 
-    async def _generate_response_with_chat_completions(self, message: str, context: str) -> str:
-        """Fallback to Chat Completions for employees without assistant_id."""
-        # Build the system prompt based on employee type and parameters
+    async def _generate_response_with_responses_api(self, message: str, context: str) -> str:
+        """Primary path using the OpenAI Responses API with Conversations.
+
+        - Creates a server-side conversation on first use and reuses it for context.
+        """
         system_prompt = self._build_system_prompt(context)
 
-        # Prepare messages for OpenAI
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
+        def _call_responses_api() -> str:
+            # Ensure a conversation exists
+            if not self.conversation_id:
+                conv = self.client.conversations.create()
+                self.conversation_id = conv.id
 
-        # Add conversation history if available
-        if self.conversation_history:
-            for conv in self.conversation_history[-5:]:  # Last 5 exchanges
-                messages.append({"role": "user", "content": conv["user"]})
-                messages.append({"role": "assistant", "content": conv["assistant"]})
+            # Coerce legacy model names to a modern, conversation-capable default
+            configured_model = (self.parameters.get("model") or "").strip()
+            lower_model = configured_model.lower()
+            if not configured_model or lower_model.startswith("gpt-3.5") or lower_model.startswith("gpt-4-0") or lower_model.startswith("gpt-4-0613") or lower_model.startswith("gpt-4-turbo"):
+                model = "gpt-4.1-mini"
+            else:
+                model = configured_model
+            temperature = self.parameters.get("temperature", 0.7)
+            max_tokens = self.parameters.get("max_tokens")
 
-        # Add current message
-        messages.append({"role": "user", "content": message})
+            # Build kwargs with best-guess fields for Responses API
+            kwargs: Dict[str, Any] = {
+                "model": model,
+                "input": message,
+                "instructions": system_prompt,
+                "conversation": self.conversation_id,
+                "temperature": temperature,
+            }
+            if isinstance(max_tokens, int):
+                # Responses API typically uses max_output_tokens
+                kwargs["max_output_tokens"] = max_tokens
 
-        # Use the legacy Chat Completions API via the new client
-        def _call_chat_completions():
-            # The new OpenAI SDK exposes chat.completions.create
-            return self.client.chat.completions.create(
-                model=self.parameters.get("model", "gpt-3.5-turbo"),
-                messages=messages,
-                temperature=self.parameters.get("temperature", 0.7),
-                max_tokens=self.parameters.get("max_tokens", 1000)
-            )
+            try:
+                resp = self.client.responses.create(**kwargs)
+            except TypeError:
+                # Fallback in case SDK expects conversation_id instead of conversation
+                kwargs.pop("conversation", None)
+                kwargs["conversation_id"] = self.conversation_id
+                resp = self.client.responses.create(**kwargs)
 
-        response = await asyncio.to_thread(_call_chat_completions)
-        return response.choices[0].message.content
+            text = getattr(resp, "output_text", None)
+            if text:
+                return text
 
-    async def _generate_response_with_assistant(self, message: str, context: str) -> str:
-        """Use the OpenAI Assistants API for responses when assistant_id is configured."""
-        system_prompt = self._build_system_prompt(context)
+            # Fallback parsing if output_text is not available
+            try:
+                outputs = getattr(resp, "output", []) or []
+                for item in outputs:
+                    contents = getattr(item, "content", []) or []
+                    for content in contents:
+                        if getattr(content, "type", None) in ("output_text", "text"):
+                            value = getattr(content, "text", None) or getattr(content, "value", None)
+                            if value:
+                                return str(value)
+            except Exception:
+                pass
+            return "(No response text)"
 
-        def _run_assistant_and_get_reply() -> str:
-            # Ensure a thread exists for this employee instance
-            if not self.thread_id:
-                thread = self.client.beta.threads.create()
-                self.thread_id = thread.id
-
-            # Add the user message to the thread
-            self.client.beta.threads.messages.create(
-                thread_id=self.thread_id,
-                role="user",
-                content=message
-            )
-
-            # Create a run with optional instructions derived from our system prompt
-            run = self.client.beta.threads.runs.create(
-                thread_id=self.thread_id,
-                assistant_id=self.assistant_id,
-                instructions=system_prompt
-            )
-
-            # Poll until the run completes
-            while True:
-                current = self.client.beta.threads.runs.retrieve(
-                    thread_id=self.thread_id,
-                    run_id=run.id
-                )
-                if current.status in ("completed", "failed", "cancelled", "expired"):
-                    break
-                time.sleep(0.5)
-
-            # If failed, provide a graceful message
-            if current.status != "completed":
-                return f"Assistant run did not complete successfully (status: {current.status})."
-
-            # Fetch the latest assistant message
-            messages_list = self.client.beta.threads.messages.list(thread_id=self.thread_id)
-            for m in messages_list.data:
-                if m.role == "assistant":
-                    # Extract text content from message
-                    parts = []
-                    for c in m.content:
-                        if getattr(c, "type", None) == "text" and getattr(c, "text", None):
-                            parts.append(c.text.value)
-                    if parts:
-                        return "\n".join(parts)
-            return "(No assistant reply available)"
-
-        reply_text = await asyncio.to_thread(_run_assistant_and_get_reply)
+        reply_text = await asyncio.to_thread(_call_responses_api)
         return reply_text
     
     def _build_system_prompt(self, context: str = "") -> str:

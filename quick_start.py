@@ -24,9 +24,9 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.8,
                 "max_tokens": 1000,
-                "model": "gpt-3.5-turbo",
+                "model": "gpt-4.1-mini",
                 "personality": "friendly, empathetic, and patient customer support specialist",
-                "assistant_id": "asst_CSLH7PCfBuy7Xk68VkgvuSlx"
+                
             }
         },
         {
@@ -35,9 +35,9 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.9,
                 "max_tokens": 1200,
-                "model": "gpt-3.5-turbo",
+                "model": "gpt-4.1-mini",
                 "personality": "enthusiastic, persuasive, and knowledgeable sales representative",
-                "assistant_id": "asst_wHy7ZjCy4RyFJJ9BB1qhvZXx"
+                
             }
         },
         {
@@ -46,9 +46,8 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.6,
                 "max_tokens": 1500,
-                "model": "gpt-3.5-turbo",
-                "personality": "technical, precise, and methodical IT support specialist",
-                "assistant_id": "asst_DrzAePXPBtWfe4ikWwEJ5ypm"
+                "model": "gpt-4.1-mini",
+                "personality": "technical, precise, and methodical IT support specialist"
             }
         }
     ]

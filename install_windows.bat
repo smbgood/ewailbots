@@ -69,7 +69,7 @@ if %errorlevel% neq 0 (
         
         REM Try installing packages individually with specific versions
         echo 📦 Installing packages individually...
-        set packages=discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.12.0 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
+        set packages=discord.py==2.3.2 python-dotenv==1.0.0 openai>=1.99.9 asyncio-mqtt==0.16.1 aiohttp==3.9.1 msgspec==0.19.0 httpx==0.25.2 typing-extensions==4.8.0
         
         for %%p in (%packages%) do (
             echo 📦 Installing %%p...
