@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     channel_id BIGINT,
     message TEXT,
     response TEXT,
+    conversation_id TEXT,
+    outcome TEXT,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -38,6 +40,10 @@ CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user
 CREATE INDEX IF NOT EXISTS idx_conversations_employee_id ON conversations(employee_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp);
+
+-- Backfill-safe alters for existing deployments
+ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS conversation_id TEXT;
+ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS outcome TEXT;
 
 -- Enable Row Level Security (RLS) - optional but recommended for production
 ALTER TABLE ai_employees ENABLE ROW LEVEL SECURITY;

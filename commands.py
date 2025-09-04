@@ -587,6 +587,52 @@ class MeetingCommands(commands.Cog):
                 value=(overall[:1000] + ("..." if len(overall) > 1000 else "")),
                 inline=False
             )
+        
+        # Decide outcome and persist to Supabase along with conversation ids
+        outcome_text = None
+        try:
+            decision_prompt = (
+                "Based on the full meeting transcript and topic, output a single, concise outcome line.\n"
+                "Format exactly as: Outcome: <short decision statement>.\n"
+                f"Topic: {topic}\n\nTranscript:\n{full_transcript}"
+            )
+            outcome_raw = await employees[0].generate_response(decision_prompt, context=system_context)
+            # Normalize to a short line and strip any leading label
+            if outcome_raw:
+                line = outcome_raw.strip().split("\n", 1)[0]
+                if line.lower().startswith("outcome:"):
+                    line = line.split(":", 1)[1].strip()
+                outcome_text = line[:500]
+        except Exception:
+            outcome_text = None
+
+        # Collect conversation ids from participating employees
+        conversation_ids: List[str] = []
+        try:
+            for emp in employees:
+                cid = getattr(emp, "conversation_id", None)
+                if isinstance(cid, str) and cid:
+                    conversation_ids.append(cid)
+        except Exception:
+            pass
+
+        try:
+            await self.bot.db.log_meeting_outcome(
+                user_id=ctx.author.id,
+                channel_id=ctx.channel.id,
+                topic=topic,
+                participants=names,
+                summary=overall,
+                outcome=(outcome_text or "No clear outcome decided"),
+                conversation_ids=conversation_ids
+            )
+            if outcome_text:
+                end_embed.add_field(name="Outcome", value=outcome_text[:1000], inline=False)
+        except Exception:
+            # Even if persistence fails, still finish gracefully
+            if outcome_text:
+                end_embed.add_field(name="Outcome", value=outcome_text[:1000], inline=False)
+
         await ctx.send(embed=end_embed)
 
 class AIGroup(commands.Cog):

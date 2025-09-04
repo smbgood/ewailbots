@@ -250,11 +250,13 @@ class DatabaseManager:
             print(f"Error setting user permission: {e}")
             return False
     
-    async def log_conversation(self, employee_id: int, user_id: int, channel_id: int, 
-                              message: str, response: str) -> bool:
-        """Log a conversation for analytics"""
+    async def log_conversation(self, employee_id: int, user_id: int, channel_id: int,
+                              message: str, response: str,
+                              conversation_id: Optional[str] = None,
+                              outcome: Optional[str] = None) -> bool:
+        """Log a conversation for analytics (optionally with conversation_id and outcome)."""
         try:
-            data = {
+            data: Dict[str, Any] = {
                 'employee_id': employee_id,
                 'user_id': user_id,
                 'channel_id': channel_id,
@@ -262,12 +264,53 @@ class DatabaseManager:
                 'response': response,
                 'timestamp': datetime.utcnow().isoformat()
             }
-            
+            if conversation_id:
+                data['conversation_id'] = conversation_id
+            if outcome:
+                data['outcome'] = outcome
+
             result = await self._make_request('POST', 'conversations', data)
             return result is not None
-            
+
         except Exception as e:
             print(f"Error logging conversation: {e}")
+            return False
+
+    async def log_meeting_outcome(self, user_id: int, channel_id: int,
+                                  topic: str, participants: List[str],
+                                  summary: Optional[str], outcome: str,
+                                  conversation_ids: Optional[List[str]] = None) -> bool:
+        """Persist a single meeting outcome row tied to one representative employee.
+
+        Notes:
+        - Stores one row in conversations with message as a compact meeting meta JSON,
+          response as the summary/outcome text for quick browsing, and optional conversation ids.
+        - employee_id will be null; we keep user/channel context and searchable fields.
+        """
+        try:
+            meta = {
+                'type': 'meeting_outcome',
+                'topic': topic,
+                'participants': participants,
+                'conversation_ids': conversation_ids or []
+            }
+            data: Dict[str, Any] = {
+                'employee_id': None,
+                'user_id': user_id,
+                'channel_id': channel_id,
+                'message': json.dumps(meta),
+                'response': (summary or outcome),
+                'outcome': outcome,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            # If there is a primary conversation id, store the first for quick filtering
+            if conversation_ids and len(conversation_ids) > 0:
+                data['conversation_id'] = conversation_ids[0]
+
+            result = await self._make_request('POST', 'conversations', data)
+            return result is not None
+        except Exception as e:
+            print(f"Error logging meeting outcome: {e}")
             return False
 
     # --- Social media integration methods ---
