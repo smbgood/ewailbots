@@ -3,6 +3,8 @@ from discord.ext import commands
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
 import json
+import re
+import httpx
 from config import Config
 
 # Import bot instance
@@ -508,7 +510,17 @@ class MeetingCommands(commands.Cog):
         )
         start_embed.add_field(name="Participants", value=", ".join(names), inline=False)
         start_embed.add_field(name="Rounds", value=str(rounds), inline=True)
-        await ctx.send(embed=start_embed)
+        # Send initial message and create a thread to consolidate the meeting output
+        thread = None
+        try:
+            start_msg = await ctx.send(embed=start_embed)
+            thread_name = f"Meeting: {topic}"
+            if len(thread_name) > 100:
+                thread_name = thread_name[:97] + "..."
+            thread = await start_msg.create_thread(name=thread_name, auto_archive_duration=1440)
+            await thread.send(f"Participants: {', '.join(names)} • Rounds: {rounds}")
+        except Exception:
+            thread = None
 
         # Shared meeting context for system prompt
         colleagues = ", ".join(names)
@@ -561,7 +573,10 @@ class MeetingCommands(commands.Cog):
                     description=response_text,
                     color=discord.Color.blue()
                 )
-                await ctx.send(embed=response_embed)
+                if thread:
+                    await thread.send(embed=response_embed)
+                else:
+                    await ctx.send(embed=response_embed)
 
         # Optional overall summary using the first participant
         try:
@@ -580,13 +595,35 @@ class MeetingCommands(commands.Cog):
             description=f"Topic: {topic}",
             color=discord.Color.green()
         )
-        if overall:
-            # Discord embed description limit safeguard
-            end_embed.add_field(
-                name="Summary & Next Actions",
-                value=(overall[:1000] + ("..." if len(overall) > 1000 else "")),
-                inline=False
-            )
+        # Helper to split and send long text as multiple messages to avoid Discord limits
+        def _chunk_text(text: str, max_len: int = 1900) -> List[str]:
+            parts: List[str] = []
+            current: List[str] = []
+            current_len = 0
+            for paragraph in text.split("\n"):
+                # Ensure at least newline preserved between paragraphs
+                pl = len(paragraph)
+                if current_len + pl + (1 if current else 0) <= max_len:
+                    if current:
+                        current.append(paragraph)
+                        current_len += pl + 1
+                    else:
+                        current = [paragraph]
+                        current_len = pl
+                else:
+                    if current:
+                        parts.append("\n".join(current))
+                    # If paragraph itself is too long, hard-split
+                    start = 0
+                    while start < pl:
+                        take = min(max_len, pl - start)
+                        parts.append(paragraph[start:start+take])
+                        start += take
+                    current = []
+                    current_len = 0
+            if current:
+                parts.append("\n".join(current))
+            return parts
         
         # Decide outcome and persist to Supabase along with conversation ids
         outcome_text = None
@@ -602,7 +639,7 @@ class MeetingCommands(commands.Cog):
                 line = outcome_raw.strip().split("\n", 1)[0]
                 if line.lower().startswith("outcome:"):
                     line = line.split(":", 1)[1].strip()
-                outcome_text = line[:500]
+                outcome_text = line
         except Exception:
             outcome_text = None
 
@@ -627,13 +664,135 @@ class MeetingCommands(commands.Cog):
                 conversation_ids=conversation_ids
             )
             if outcome_text:
-                end_embed.add_field(name="Outcome", value=outcome_text[:1000], inline=False)
+                end_embed.add_field(name="Outcome", value=outcome_text, inline=False)
         except Exception:
             # Even if persistence fails, still finish gracefully
             if outcome_text:
-                end_embed.add_field(name="Outcome", value=outcome_text[:1000], inline=False)
+                end_embed.add_field(name="Outcome", value=outcome_text, inline=False)
 
-        await ctx.send(embed=end_embed)
+        # Send concluding embed
+        if thread:
+            await thread.send(embed=end_embed)
+        else:
+            await ctx.send(embed=end_embed)
+
+        # After conclusion, send full summary/next actions without truncation
+        if overall:
+            target = thread or ctx
+            header = "Summary & Next Actions"
+            await target.send(header)
+            for idx, chunk in enumerate(_chunk_text(overall)):
+                prefix = "(cont’d)\n" if idx > 0 else ""
+                await target.send(prefix + chunk)
+
+            # Try to auto-create Linear issues if configured
+            try:
+                if getattr(Config, 'LINEAR_API_KEY', None) and getattr(Config, 'LINEAR_TEAM_ID', None):
+                    # Extract action lines heuristically (numbered or bulleted)
+                    action_lines: List[str] = []
+                    for line in overall.split("\n"):
+                        if re.match(r"^\s*(?:\d+\.|[-•])\s+", line):
+                            action_lines.append(re.sub(r"^\s*(?:\d+\.|[-•])\s+", "", line).strip())
+                    created_details: List[Dict[str, Any]] = []
+                    for action in action_lines[:10]:
+                        owner_match = re.search(r"owner[:\-]\s*([^\)\n]+)", action, flags=re.IGNORECASE)
+                        owner = owner_match.group(1).strip() if owner_match else None
+                        title = re.sub(r"\s*\(.*?owner.*?\)\s*", "", action, flags=re.IGNORECASE)
+                        if len(title) > 80:
+                            title = title[:77] + "..."
+                        description = (
+                            f"Topic: {topic}\n"
+                            f"Suggested owner: {owner or 'Unassigned'}\n\n"
+                            f"Proposed by AI meeting participants: {', '.join(names)}.\n\n"
+                            f"Full context summary:\n{overall}"
+                        )
+                        mutation = {
+                            "query": (
+                                "mutation IssueCreate($input: IssueCreateInput!) { "
+                                "issueCreate(input: $input) { success issue { identifier url title } } }"
+                            ),
+                            "variables": {
+                                "input": {
+                                    "teamId": getattr(Config, 'LINEAR_TEAM_ID', None),
+                                    "title": title,
+                                    "description": description,
+                                }
+                            }
+                        }
+                        project_id = getattr(Config, 'LINEAR_PROJECT_ID', None)
+                        if project_id:
+                            mutation["variables"]["input"]["projectId"] = project_id
+                        headers = {
+                            "Authorization": f"Bearer {getattr(Config, 'LINEAR_API_KEY', '')}",
+                            "Content-Type": "application/json"
+                        }
+                        async with httpx.AsyncClient(timeout=30) as client:
+                            resp = await client.post("https://api.linear.app/graphql", json=mutation, headers=headers)
+                            issue_url = None
+                            issue_identifier = None
+                            issue_id = None
+                            success_flag = None
+                            errors_payload: Any = None
+                            raw_text: str = ""
+                            try:
+                                raw_text = resp.text or ""
+                                data = resp.json()
+                                # Check for GraphQL errors
+                                if isinstance(data, dict) and data.get("errors"):
+                                    errors_payload = data.get("errors")
+                                payload = (data or {}).get("data") or {}
+                                icreate = payload.get("issueCreate") or {}
+                                success_flag = icreate.get("success")
+                                issue = icreate.get("issue") or {}
+                                if issue:
+                                    issue_url = issue.get("url")
+                                    issue_identifier = issue.get("identifier")
+                                    issue_id = issue.get("id")
+                                # Fallback: build URL from identifier if missing
+                                if not issue_url and issue_identifier:
+                                    issue_url = f"https://linear.app/issue/{issue_identifier}"
+                            except Exception:
+                                pass
+                            created_details.append({
+                                "title": title,
+                                "url": issue_url,
+                                "identifier": issue_identifier,
+                                "id": issue_id,
+                                "success": success_flag,
+                                "errors": errors_payload,
+                                "http_status": getattr(resp, "status_code", None),
+                                "raw": (raw_text[:1000] + ("..." if len(raw_text) > 1000 else "")),
+                                "description": description
+                            })
+                    if created_details:
+                        await target.send("Created Linear issues:")
+                        for entry in created_details:
+                            line = f"- [{entry.get('identifier') or '?'}] {entry.get('title') or ''}\n{entry.get('url') or '(no url returned)'}"
+                            await target.send(line)
+                            # Send full description in chunks to avoid Discord limits
+                            desc = entry.get("description") or ""
+                            for idx, chunk in enumerate(_chunk_text(desc)):
+                                prefix = "Description (cont’d):\n" if idx > 0 else "Description:\n"
+                                await target.send(prefix + chunk)
+                            # If we still lack a URL and identifier, provide a concise debug snippet
+                            if not entry.get("url") and not entry.get("identifier"):
+                                debug_msg = "Linear API response did not include url/identifier. "
+                                status = entry.get("http_status")
+                                if status:
+                                    debug_msg += f"HTTP {status}. "
+                                errors = entry.get("errors")
+                                if errors:
+                                    debug_msg += f"Errors: {errors}"
+                                else:
+                                    debug_msg += "Body snippet: " + (entry.get("raw") or "")
+                                await target.send(debug_msg)
+                else:
+                    # Not configured; notify once in the thread
+                    target = thread or ctx
+                    await target.send("ℹ️ Linear integration is not configured. Set LINEAR_API_KEY and LINEAR_TEAM_ID to enable auto-issue creation.")
+            except Exception as e:
+                # Fail gracefully without breaking the meeting flow
+                await (thread or ctx).send(f"⚠️ Failed to create Linear issues automatically: {str(e)}")
 
 class AIGroup(commands.Cog):
     """Grouped AI employee commands using the !ai prefix"""

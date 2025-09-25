@@ -82,3 +82,14 @@ class Config:
         print(f"   FACEBOOK_GRAPH_API_VERSION: {FACEBOOK_GRAPH_API_VERSION}")
     except Exception:
         pass
+
+    # Linear integration (optional)
+    LINEAR_API_KEY = os.getenv('LINEAR_API_KEY')
+    LINEAR_TEAM_ID = os.getenv('LINEAR_TEAM_ID')
+    LINEAR_PROJECT_ID = os.getenv('LINEAR_PROJECT_ID')  # Optional default project
+    try:
+        print(f"   LINEAR_API_KEY: {'✅ Set' if LINEAR_API_KEY else '❌ Missing'}")
+        print(f"   LINEAR_TEAM_ID: {'✅ Set' if LINEAR_TEAM_ID else '❌ Missing'}")
+        print(f"   LINEAR_PROJECT_ID: {'✅ Set' if LINEAR_PROJECT_ID else '❌ Missing (optional)'}")
+    except Exception:
+        pass

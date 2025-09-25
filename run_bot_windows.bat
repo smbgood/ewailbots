@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
-python run_bot.py
+set PYTHONUNBUFFERED=1
+python -u run_bot.py
 pause
