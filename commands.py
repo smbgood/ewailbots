@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any, List, Tuple
@@ -6,6 +7,7 @@ import json
 import re
 import httpx
 from config import Config
+from image_generator import generate_image
 
 # Import bot instance
 # Note: The bot instance will be provided by the loader via the setup(bot) function.
@@ -22,17 +24,19 @@ class SocialCommands(commands.Cog):
         return await self.bot.check_permissions(ctx, Config.PERMISSION_LEVELS["MODERATOR"])
 
     @commands.command(name="social")
-    async def social(self, ctx, prompt: str, account_key: str, employee_name: str, image: str, status: str = "draft"):
+    async def social(self, ctx, prompt: str, account_key: str, employee_name: str, image: str, status: str = "draft", section: str = "", keywords: str = ""):
         """Create a social media post draft.
 
         Usage:
-        !social "<prompt>" <account_key> <employee_name> <true|false|image_url> [draft|scheduled]
+        !social "<prompt>" <account_key> <employee_name> <true|false|image_url> [draft|scheduled] [section] [keywords]
 
         - prompt: caption generation prompt or text
         - account_key: configured social account key (e.g., EW-Insta)
         - employee_name: AI employee to generate content
         - image: 'true' to generate, 'false' for no image, or a direct image URL
         - status: default 'draft' (others reserved)
+        - section: optional website section to highlight/promote
+        - keywords: optional SEO/trend keywords to work in
         """
         try:
             # Validate account exists
@@ -63,13 +67,46 @@ class SocialCommands(commands.Cog):
                 image_mode = "url"
                 image_url = image
 
+            section_text = (section or "").strip()
+            keywords_text = (keywords or "").strip()
+
             # Generate caption using employee (platform-aware prompt)
             platform_nice = "Instagram" if platform == "instagram" else "Facebook Page"
             caption_prompt = (
                 f"Write a {platform_nice} post caption for this prompt. "
                 f"Keep it concise, engaging, and appropriate for {platform_nice}. Prompt: {prompt}"
             )
+            if section_text:
+                caption_prompt += f" Highlight or promote this website section: {section_text}."
+            if keywords_text:
+                caption_prompt += f" Consider these keywords if relevant: {keywords_text}."
             caption = await employee.generate_response(caption_prompt)
+
+            image_meta: Dict[str, Any] = {}
+            if image_mode == "generate":
+                image_prompt = "Create a high-quality social media image that highlights a website section."
+                if section_text:
+                    image_prompt += f" Section: {section_text}."
+                image_prompt += f" Theme or focus: {prompt}. Style: clean, modern, vibrant, no text."
+                try:
+                    image_result = await asyncio.to_thread(generate_image, image_prompt)
+                    image_url = image_result.get("image_url")
+                    image_meta = {
+                        "image_prompt": image_prompt,
+                        "image_source": image_result.get("source"),
+                        "image_path": image_result.get("image_path"),
+                        "image_revised_prompt": image_result.get("revised_prompt"),
+                    }
+                    if image_url:
+                        print(f"Generated social image URL: {image_url}")
+                    else:
+                        image_meta["image_error"] = "Image generated without a usable URL"
+                except Exception as e:
+                    image_meta = {
+                        "image_prompt": image_prompt,
+                        "image_error": str(e),
+                    }
+                    print(f"Image generation failed: {e}")
 
             # Create draft post in DB
             data = {
@@ -83,7 +120,10 @@ class SocialCommands(commands.Cog):
                 "employee_name": employee_name,
                 "requested_by_user_id": ctx.author.id,
                 "meta": {
-                    "channel_id": ctx.channel.id
+                    "channel_id": ctx.channel.id,
+                    "section": section_text or None,
+                    "keywords": keywords_text or None,
+                    **image_meta,
                 }
             }
 
@@ -108,6 +148,8 @@ class SocialCommands(commands.Cog):
             view = SocialPostView(self.bot, created.get('id'), created.get('requested_by_user_id'), created.get('account_key'))
             msg = await ctx.send(embed=embed, view=view)
             view.set_message(msg)
+            if image_mode == "generate" and not image_url:
+                await ctx.send("⚠️ Image generation did not provide a usable URL. Draft created without an image.")
 
         except Exception as e:
             await ctx.send(f"❌ Error creating social post: {str(e)}")

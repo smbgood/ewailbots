@@ -233,7 +233,8 @@ class AIEmployeeBot(commands.Bot):
             access_token = credentials.get("access_token")
             ig_business_account_id = credentials.get("ig_business_account_id")
             caption = post.get("caption") or ""
-            image_url = post.get("image_url") if (post.get("image_mode") == "url") else None
+            image_mode = post.get("image_mode")
+            image_url = post.get("image_url") if image_mode in ("url", "generate") else None
 
             # If credentials are incomplete, simulate success to keep flow moving in dev
             if not access_token or not ig_business_account_id:
@@ -285,7 +286,8 @@ class AIEmployeeBot(commands.Bot):
             page_access_token = credentials.get("page_access_token") or credentials.get("access_token")
             page_id = credentials.get("page_id")
             message = post.get("caption") or post.get("prompt") or ""
-            image_url = post.get("image_url") if (post.get("image_mode") == "url") else None
+            image_mode = post.get("image_mode")
+            image_url = post.get("image_url") if image_mode in ("url", "generate") else None
 
             # If credentials are incomplete, simulate success in dev
             if not page_access_token or not page_id:

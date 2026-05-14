@@ -32,6 +32,9 @@ class Config:
     print(f"   DISCORD_TOKEN: {'✅ Set (legacy)' if DISCORD_TOKEN else '❌ Missing (legacy)'}")
     print(f"   GUILD_ID: {'✅ Set' if GUILD_ID else '❌ Missing (optional)'}")
     print(f"   OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Missing'}")
+    print(f"   OPENAI_IMAGE_MODEL: {os.getenv('OPENAI_IMAGE_MODEL') or 'gpt-image-1 (default)'}")
+    print(f"   IMAGE_UPLOAD_DIR: {'✅ Set' if os.getenv('IMAGE_UPLOAD_DIR') else '❌ Missing (optional)'}")
+    print(f"   IMAGE_PUBLIC_BASE_URL: {'✅ Set' if os.getenv('IMAGE_PUBLIC_BASE_URL') else '❌ Missing (optional)'}")
     print(f"   SUPABASE_URL: {'✅ Set' if os.getenv('SUPABASE_URL') else '❌ Missing (optional)'}")
     # Do not print keys themselves; only signal presence for debugging
     print(f"   SUPABASE_ANON_KEY: {'✅ Set' if os.getenv('SUPABASE_ANON_KEY') else '❌ Missing'}")
@@ -58,6 +61,13 @@ class Config:
     
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    OPENAI_IMAGE_MODEL = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-1')
+    OPENAI_IMAGE_SIZE = os.getenv('OPENAI_IMAGE_SIZE', '1024x1024')
+    OPENAI_IMAGE_QUALITY = os.getenv('OPENAI_IMAGE_QUALITY', 'standard')
+
+    # Image storage configuration (optional)
+    IMAGE_UPLOAD_DIR = os.getenv('IMAGE_UPLOAD_DIR')
+    IMAGE_PUBLIC_BASE_URL = os.getenv('IMAGE_PUBLIC_BASE_URL')
     
     # Permission Levels
     PERMISSION_LEVELS = {
