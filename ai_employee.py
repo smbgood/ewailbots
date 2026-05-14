@@ -1,24 +1,33 @@
 import asyncio
-import time
 from typing import Dict, Any, Optional
-from openai import OpenAI
 from config import Config
 from database import DatabaseManager
+from openai_service import OpenAIService, OpenAIServiceError
 
 class AIEmployee:
-    def __init__(self, name: str, employee_type: str, parameters: Dict[str, Any]):
+    def __init__(
+        self,
+        name: str,
+        employee_type: str,
+        parameters: Dict[str, Any],
+        *,
+        employee_id: Optional[int] = None,
+        db: Optional[DatabaseManager] = None,
+    ):
+        self.id = employee_id
         self.name = name
         self.employee_type = employee_type
         self.parameters = parameters
         self.conversation_history = []
-        self.db = DatabaseManager()
+        self.db = db or DatabaseManager()
         
-        # OpenAI client and Responses/Conversations support
-        self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+        # Centralized OpenAI integration boundary.
+        self.openai = OpenAIService(api_key=Config.OPENAI_API_KEY)
         # assistant_id kept for backward compatibility with older configs; no longer used
         self.assistant_id: Optional[str] = self.parameters.get("assistant_id")
-        # Server-managed conversation for context with Responses API
+        # Stateful response tracking.
         self.conversation_id: Optional[str] = None
+        self.previous_response_id: Optional[str] = None
     
     async def generate_response(self, message: str, context: str = "") -> str:
         """Generate a response using OpenAI Responses API with Conversations.
@@ -42,9 +51,11 @@ class AIEmployee:
 
             return ai_response
 
+        except asyncio.TimeoutError:
+            return "I hit a timeout while generating that response. Please try again in a moment."
         except Exception as e:
-            print(f"Error generating AI response: {e}")
-            return f"I apologize, but I'm experiencing technical difficulties. Please try again later. (Error: {str(e)})"
+            print(f"Error generating AI response for {self.name}: {e}")
+            return "I apologize, but I'm experiencing technical difficulties right now. Please try again shortly."
 
     async def _generate_response_with_responses_api(self, message: str, context: str) -> str:
         """Primary path using the OpenAI Responses API with Conversations.
@@ -54,60 +65,44 @@ class AIEmployee:
         system_prompt = self._build_system_prompt(context)
 
         def _call_responses_api() -> str:
-            # Ensure a conversation exists
-            if not self.conversation_id:
-                conv = self.client.conversations.create()
-                self.conversation_id = conv.id
-
-            # Coerce legacy model names to a modern, conversation-capable default
-            configured_model = (self.parameters.get("model") or "").strip()
-            lower_model = configured_model.lower()
-            if not configured_model or lower_model.startswith("gpt-3.5") or lower_model.startswith("gpt-4-0") or lower_model.startswith("gpt-4-0613") or lower_model.startswith("gpt-4-turbo"):
-                model = "gpt-4.1-mini"
-            else:
-                model = configured_model
-            temperature = self.parameters.get("temperature", 0.7)
+            model = (self.parameters.get("model") or Config.OPENAI_TEXT_MODEL).strip()
+            temperature = float(self.parameters.get("temperature", 0.7))
             max_tokens = self.parameters.get("max_tokens")
+            strategy = (Config.OPENAI_CONVERSATION_STRATEGY or "conversations").strip().lower()
 
-            # Build kwargs with best-guess fields for Responses API
-            kwargs: Dict[str, Any] = {
-                "model": model,
-                "input": message,
-                "instructions": system_prompt,
-                "conversation": self.conversation_id,
-                "temperature": temperature,
-            }
-            if isinstance(max_tokens, int):
-                # Responses API typically uses max_output_tokens
-                kwargs["max_output_tokens"] = max_tokens
+            use_previous_response = strategy == "previous_response_id"
+            conversation_id: Optional[str] = None
+            previous_response_id: Optional[str] = None
 
-            try:
-                resp = self.client.responses.create(**kwargs)
-            except TypeError:
-                # Fallback in case SDK expects conversation_id instead of conversation
-                kwargs.pop("conversation", None)
-                kwargs["conversation_id"] = self.conversation_id
-                resp = self.client.responses.create(**kwargs)
+            if use_previous_response:
+                previous_response_id = self.previous_response_id
+            else:
+                if not self.conversation_id:
+                    self.conversation_id = self.openai.create_conversation()
+                conversation_id = self.conversation_id
 
-            text = getattr(resp, "output_text", None)
-            if text:
-                return text
+            response = self.openai.generate_text(
+                message=message,
+                instructions=system_prompt,
+                model=model,
+                temperature=temperature,
+                max_output_tokens=max_tokens if isinstance(max_tokens, int) else None,
+                conversation_id=conversation_id,
+                previous_response_id=previous_response_id,
+                store=Config.OPENAI_RESPONSE_STORE,
+            )
 
-            # Fallback parsing if output_text is not available
-            try:
-                outputs = getattr(resp, "output", []) or []
-                for item in outputs:
-                    contents = getattr(item, "content", []) or []
-                    for content in contents:
-                        if getattr(content, "type", None) in ("output_text", "text"):
-                            value = getattr(content, "text", None) or getattr(content, "value", None)
-                            if value:
-                                return str(value)
-            except Exception:
-                pass
-            return "(No response text)"
+            # Track response chain for previous_response_id strategy.
+            self.previous_response_id = response.get("response_id")
+            return response.get("text") or "(No response text)"
 
-        reply_text = await asyncio.to_thread(_call_responses_api)
+        try:
+            reply_text = await asyncio.wait_for(
+                asyncio.to_thread(_call_responses_api),
+                timeout=Config.OPENAI_TIMEOUT_SECONDS + 5,
+            )
+        except OpenAIServiceError:
+            raise
         return reply_text
     
     def _build_system_prompt(self, context: str = "") -> str:
@@ -156,6 +151,8 @@ Remember: You are {self.name} and should respond accordingly."""
     async def reset_conversation(self):
         """Reset conversation history"""
         self.conversation_history = []
+        self.conversation_id = None
+        self.previous_response_id = None
     
     async def get_conversation_summary(self) -> str:
         """Get a summary of recent conversations"""

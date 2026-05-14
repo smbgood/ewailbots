@@ -226,15 +226,16 @@ class DatabaseManager:
             print(f"Error getting user permission: {e}")
             return 1
     
-    async def set_user_permission(self, user_id: int, permission_level: int, granted_by: int) -> bool:
+    async def set_user_permission(self, user_id: int, permission_level: int, granted_by: Optional[int] = None) -> bool:
         """Set user permission level"""
         try:
             data = {
                 'user_id': user_id,
                 'permission_level': permission_level,
-                'granted_by': granted_by,
                 'granted_at': datetime.utcnow().isoformat()
             }
+            if granted_by is not None:
+                data['granted_by'] = granted_by
             
             # Use upsert endpoint
             url = f"{self.supabase_url}/rest/v1/user_permissions"
@@ -250,20 +251,21 @@ class DatabaseManager:
             print(f"Error setting user permission: {e}")
             return False
     
-    async def log_conversation(self, employee_id: int, user_id: int, channel_id: int,
+    async def log_conversation(self, employee_id: Optional[int], user_id: int, channel_id: int,
                               message: str, response: str,
                               conversation_id: Optional[str] = None,
                               outcome: Optional[str] = None) -> bool:
         """Log a conversation for analytics (optionally with conversation_id and outcome)."""
         try:
             data: Dict[str, Any] = {
-                'employee_id': employee_id,
                 'user_id': user_id,
                 'channel_id': channel_id,
                 'message': message,
                 'response': response,
                 'timestamp': datetime.utcnow().isoformat()
             }
+            if employee_id is not None:
+                data['employee_id'] = employee_id
             if conversation_id:
                 data['conversation_id'] = conversation_id
             if outcome:

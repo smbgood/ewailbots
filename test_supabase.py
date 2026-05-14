@@ -31,7 +31,7 @@ async def test_supabase_connection():
         test_params = {
             "temperature": 0.8,
             "max_tokens": 1000,
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-5.5-mini",
             "personality": "helpful test assistant"
         }
         

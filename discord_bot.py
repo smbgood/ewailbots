@@ -8,6 +8,7 @@ from database import DatabaseManager
 import json
 import os
 import httpx
+from image_generator import generate_image
 
 
 def debug_environment():
@@ -52,6 +53,8 @@ class AIEmployeeBot(commands.Bot):
         self.employee_manager = EmployeeManager()
         self.db = DatabaseManager()
         self._social_publisher_task = None
+        self._text_semaphore = asyncio.Semaphore(max(1, Config.OPENAI_MAX_CONCURRENT_TEXT))
+        self._image_semaphore = asyncio.Semaphore(max(1, Config.OPENAI_MAX_CONCURRENT_IMAGE))
         
         # Note: Commands will be loaded in setup_hook
         
@@ -121,9 +124,12 @@ class AIEmployeeBot(commands.Bot):
         else:
             await ctx.send(f"❌ An error occurred: {str(error)}")
     
-    async def check_permissions(self, ctx, required_level: int) -> bool:
-        """Check if user has required permission level"""
-        user_id = ctx.author.id
+    async def check_permissions(self, context_or_interaction, required_level: int) -> bool:
+        """Check if user has required permission level for command or interaction contexts."""
+        user = getattr(context_or_interaction, "author", None) or getattr(context_or_interaction, "user", None)
+        if user is None:
+            return False
+        user_id = user.id
         
         # Check if user is in admin list
         if user_id in Config.ADMIN_USER_IDS:
@@ -132,59 +138,79 @@ class AIEmployeeBot(commands.Bot):
         # Check database permissions
         user_level = await self.db.get_user_permission(user_id)
         return user_level >= required_level
+
+    async def generate_employee_response(self, employee, message: str, context: str = "") -> str:
+        """Run employee response generation behind global app limits."""
+        async with self._text_semaphore:
+            return await asyncio.wait_for(
+                employee.generate_response(message, context),
+                timeout=Config.OPENAI_TIMEOUT_SECONDS + 10,
+            )
+
+    async def generate_social_image(self, prompt: str) -> Dict[str, Any]:
+        """Run image generation behind global app limits."""
+        async with self._image_semaphore:
+            return await asyncio.wait_for(
+                asyncio.to_thread(generate_image, prompt),
+                timeout=Config.OPENAI_TIMEOUT_SECONDS + 20,
+            )
     
     async def send_message_as_employee(self, channel, employee_name: str, 
                                      message: str, context: str = "") -> bool:
         """Send a message as a specific AI employee"""
         try:
-            response = await self.employee_manager.send_message_as_employee(
-                employee_name, message, context
-            )
-            
-            if response:
-                # Create embed for the response
-                embed = discord.Embed(
-                    title=f"💬 {employee_name}",
-                    description=response,
-                    color=discord.Color.blue()
-                )
-                embed.set_footer(text=f"AI Employee • {employee_name}")
-                
-                await channel.send(embed=embed)
-                return True
-            else:
+            employee = await self.employee_manager.get_employee(employee_name)
+            if not employee:
                 await channel.send(f"❌ Employee '{employee_name}' not found or inactive.")
                 return False
-                
+
+            response = await self.generate_employee_response(employee, message, context)
+
+            # Create embed for the response
+            embed = discord.Embed(
+                title=f"💬 {employee_name}",
+                description=response,
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text=f"AI Employee • {employee_name}")
+
+            await channel.send(embed=embed)
+            return True
+        except asyncio.TimeoutError:
+            await channel.send("⏳ The AI request timed out. Please try again.")
+            return False
         except Exception as e:
-            await channel.send(f"❌ Error sending message as employee: {str(e)}")
+            print(f"Error sending message as employee '{employee_name}': {e}")
+            await channel.send("❌ I hit an unexpected issue while generating that response.")
             return False
     
     async def send_dm_as_employee(self, user, employee_name: str, 
                                  message: str, context: str = "") -> bool:
         """Send a private message as a specific AI employee"""
         try:
-            response = await self.employee_manager.send_message_as_employee(
-                employee_name, message, context
-            )
-            
-            if response:
-                # Create embed for the response
-                embed = discord.Embed(
-                    title=f"💬 {employee_name}",
-                    description=response,
-                    color=discord.Color.green()
-                )
-                embed.set_footer(text=f"AI Employee • {employee_name}")
-                
-                await user.send(embed=embed)
-                return True
-            else:
+            employee = await self.employee_manager.get_employee(employee_name)
+            if not employee:
                 await user.send(f"❌ Employee '{employee_name}' not found or inactive.")
                 return False
-                
+
+            response = await self.generate_employee_response(employee, message, context)
+
+            # Create embed for the response
+            embed = discord.Embed(
+                title=f"💬 {employee_name}",
+                description=response,
+                color=discord.Color.green()
+            )
+            embed.set_footer(text=f"AI Employee • {employee_name}")
+
+            await user.send(embed=embed)
+            return True
+        except asyncio.TimeoutError:
+            await user.send("⏳ The AI request timed out. Please try again.")
+            return False
         except Exception as e:
-            await user.send(f"❌ Error sending message as employee: {str(e)}")
+            print(f"Error sending DM as employee '{employee_name}': {e}")
+            await user.send("❌ I hit an unexpected issue while generating that response.")
             return False
 
     async def _social_publisher_loop(self):
@@ -347,7 +373,11 @@ async def on_message(message):
             employee = await bot.employee_manager.get_employee(employee_name)
             if employee:
                 # Generate response
-                response = await employee.generate_response(user_message)
+                try:
+                    response = await bot.generate_employee_response(employee, user_message)
+                except asyncio.TimeoutError:
+                    await message.channel.send("⏳ The AI request timed out. Please try again.")
+                    return
                 
                 # Create embed
                 embed = discord.Embed(
@@ -361,11 +391,12 @@ async def on_message(message):
                 
                 # Log conversation
                 await bot.db.log_conversation(
-                    employee.id,
+                    getattr(employee, "id", None),
                     message.author.id,
                     message.channel.id,
                     user_message,
-                    response
+                    response,
+                    conversation_id=getattr(employee, "conversation_id", None),
                 )
 
 # Run the bot

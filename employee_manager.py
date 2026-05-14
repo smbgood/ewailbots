@@ -5,26 +5,26 @@ from database import DatabaseManager
 from config import Config
 
 class EmployeeManager:
-    def __init__(self):
+    def __init__(self, db: Optional[DatabaseManager] = None):
         self.db = DatabaseManager()
+        if db is not None:
+            self.db = db
         self.active_employees: Dict[str, AIEmployee] = {}
-        self.load_existing_employees()
-    
+        # Note: load_existing_employees will be called from setup_hook
+
     async def load_existing_employees(self):
         """Load existing employees from database"""
         employees = await self.db.get_all_ai_employees()
+        self.active_employees.clear()
         for emp_data in employees:
             employee = AIEmployee(
                 emp_data['name'],
                 emp_data['employee_type'],
-                emp_data['parameters']
+                emp_data['parameters'],
+                employee_id=emp_data.get('id'),
+                db=self.db,
             )
             self.active_employees[emp_data['name']] = employee
-    
-    def __init__(self):
-        self.db = DatabaseManager()
-        self.active_employees: Dict[str, AIEmployee] = {}
-        # Note: load_existing_employees will be called from setup_hook
     
     async def create_employee(self, name: str, employee_type: str, 
                              parameters: Optional[Dict[str, Any]] = None) -> bool:
@@ -44,7 +44,14 @@ class EmployeeManager:
                 return False
             
             # Create employee instance
-            employee = AIEmployee(name, employee_type, parameters)
+            created_row = await self.db.get_ai_employee(name)
+            employee = AIEmployee(
+                name,
+                employee_type,
+                parameters,
+                employee_id=(created_row or {}).get('id'),
+                db=self.db,
+            )
             self.active_employees[name] = employee
             
             return True

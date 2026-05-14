@@ -24,7 +24,7 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.8,
                 "max_tokens": 1000,
-                "model": "gpt-4.1-mini",
+                "model": "gpt-5.5-mini",
                 "personality": "friendly, empathetic, and patient customer support specialist",
                 
             }
@@ -35,7 +35,7 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.9,
                 "max_tokens": 1200,
-                "model": "gpt-4.1-mini",
+                "model": "gpt-5.5-mini",
                 "personality": "enthusiastic, persuasive, and knowledgeable sales representative",
                 
             }
@@ -46,7 +46,7 @@ async def create_sample_employees():
             "parameters": {
                 "temperature": 0.6,
                 "max_tokens": 1500,
-                "model": "gpt-4.1-mini",
+                "model": "gpt-5.5-mini",
                 "personality": "technical, precise, and methodical IT support specialist"
             }
         }
@@ -81,13 +81,13 @@ async def show_next_steps():
     print("2. Configure your Discord bot token and OpenAI API key")
     print("3. Run the bot with: python run_bot.py")
     print("4. Add your Discord user ID to ADMIN_USER_IDS in config.py")
-    print("5. Test the bot with: !list_employees")
+    print("5. Test the bot with: !ai list")
     print("\nAvailable Commands:")
-    print("• !create_employee <name> <type> [parameters]")
-    print("• !list_employees")
-    print("• !employee_info <name>")
-    print("• !send_as <employee> <channel> <message>")
-    print("• !help_ai")
+    print("• !ai create <name> <role> <personality>")
+    print("• !ai list")
+    print("• !ai info <name>")
+    print("• !chat message <employee> <message>")
+    print("• !ai help")
     print("\nQuick Test:")
     print("Once running, try: @Darah Hello! How can you help me?")
 

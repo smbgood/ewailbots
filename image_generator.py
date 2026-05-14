@@ -3,10 +3,10 @@ import os
 import uuid
 from typing import Dict, Any, Optional
 
-from openai import OpenAI
 from config import Config
+from openai_service import OpenAIService
 
-_client = OpenAI(api_key=Config.OPENAI_API_KEY)
+_service = OpenAIService(api_key=Config.OPENAI_API_KEY)
 
 
 def _build_public_url(filename: str) -> Optional[str]:
@@ -20,27 +20,20 @@ def generate_image(prompt: str, size: Optional[str] = None, quality: Optional[st
     if not Config.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY is not configured")
 
-    selected_model = model or Config.OPENAI_IMAGE_MODEL or "gpt-image-1"
+    selected_model = model or Config.OPENAI_IMAGE_MODEL or "gpt-image-2"
     selected_size = size or Config.OPENAI_IMAGE_SIZE or "1024x1024"
-    selected_quality = quality or Config.OPENAI_IMAGE_QUALITY or "standard"
+    selected_quality = quality or Config.OPENAI_IMAGE_QUALITY or "medium"
 
-    use_upload = bool(Config.IMAGE_UPLOAD_DIR and Config.IMAGE_PUBLIC_BASE_URL)
-    response_format = "b64_json" if use_upload else "url"
-
-    kwargs: Dict[str, Any] = {
-        "model": selected_model,
-        "prompt": prompt,
-        "size": selected_size,
-        "quality": selected_quality,
-        "n": 1,
-        "response_format": response_format,
-    }
-
-    resp = _client.images.generate(**kwargs)
-    data = getattr(resp, "data", None) or []
-    first = data[0] if data else None
-    if not first:
-        raise ValueError("No image data returned from OpenAI")
+    first = _service.generate_image(
+        prompt=prompt,
+        model=selected_model,
+        size=selected_size,
+        quality=selected_quality,
+        output_format=Config.OPENAI_IMAGE_OUTPUT_FORMAT,
+        moderation=Config.OPENAI_IMAGE_MODERATION,
+        background=Config.OPENAI_IMAGE_BACKGROUND,
+        n=1,
+    )
 
     result: Dict[str, Any] = {
         "image_url": None,
@@ -49,29 +42,29 @@ def generate_image(prompt: str, size: Optional[str] = None, quality: Optional[st
         "source": None,
     }
 
-    if use_upload and getattr(first, "b64_json", None):
-        raw = base64.b64decode(first.b64_json)
+    b64_json = getattr(first, "b64_json", None)
+    if b64_json:
+        raw = base64.b64decode(b64_json)
         os.makedirs(Config.IMAGE_UPLOAD_DIR, exist_ok=True)
         filename = f"generated_{uuid.uuid4().hex[:12]}.png"
         path = os.path.join(Config.IMAGE_UPLOAD_DIR, filename)
         with open(path, "wb") as handle:
             handle.write(raw)
         public_url = _build_public_url(filename)
-        result.update({"image_url": public_url, "image_path": path, "source": "uploaded"})
+        result.update(
+            {
+                "image_url": public_url,
+                "image_path": path,
+                "source": "stored_file",
+            }
+        )
     else:
+        # Fallback for providers/accounts that only return hosted URLs.
         url = getattr(first, "url", None)
         if url:
             result.update({"image_url": url, "source": "openai_url"})
-        elif getattr(first, "b64_json", None):
-            raw = base64.b64decode(first.b64_json)
-            fallback_dir = Config.IMAGE_UPLOAD_DIR or "."
-            os.makedirs(fallback_dir, exist_ok=True)
-            filename = f"generated_{uuid.uuid4().hex[:12]}.png"
-            path = os.path.join(fallback_dir, filename)
-            with open(path, "wb") as handle:
-                handle.write(raw)
-            public_url = _build_public_url(filename)
-            result.update({"image_url": public_url, "image_path": path, "source": "local_file"})
+        else:
+            raise ValueError("Image generation succeeded but no usable image payload was returned")
 
     revised_prompt = getattr(first, "revised_prompt", None)
     if revised_prompt:

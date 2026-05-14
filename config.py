@@ -2,13 +2,21 @@ import os
 from typing import List, Dict, Any
 from dotenv import load_dotenv, find_dotenv
 
+# Helpers
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Load environment variables
-print("🔧 Loading configuration from environment variables...")
+print("Loading configuration from environment variables...")
 dotenv_path = find_dotenv(usecwd=True)
 load_dotenv(dotenv_path=dotenv_path)
 if dotenv_path:
     try:
-        print(f"📄 .env loaded from: {dotenv_path}")
+        print(f".env loaded from: {dotenv_path}")
     except Exception:
         # Avoid encoding issues on some consoles
         pass
@@ -25,20 +33,21 @@ class Config:
     GUILD_ID = int(os.getenv('GUILD_ID', 0))
     
     # Log configuration status
-    print(f"📋 Configuration loaded:")
-    print(f"   DISCORD_APPLICATION_ID: {'✅ Set' if DISCORD_APPLICATION_ID else '❌ Missing'}")
-    print(f"   DISCORD_CLIENT_SECRET: {'✅ Set' if DISCORD_CLIENT_SECRET else '❌ Missing'}")
-    print(f"   DISCORD_PUBLIC_KEY: {'✅ Set' if DISCORD_PUBLIC_KEY else '❌ Missing'}")
-    print(f"   DISCORD_TOKEN: {'✅ Set (legacy)' if DISCORD_TOKEN else '❌ Missing (legacy)'}")
-    print(f"   GUILD_ID: {'✅ Set' if GUILD_ID else '❌ Missing (optional)'}")
-    print(f"   OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Missing'}")
-    print(f"   OPENAI_IMAGE_MODEL: {os.getenv('OPENAI_IMAGE_MODEL') or 'gpt-image-1 (default)'}")
-    print(f"   IMAGE_UPLOAD_DIR: {'✅ Set' if os.getenv('IMAGE_UPLOAD_DIR') else '❌ Missing (optional)'}")
-    print(f"   IMAGE_PUBLIC_BASE_URL: {'✅ Set' if os.getenv('IMAGE_PUBLIC_BASE_URL') else '❌ Missing (optional)'}")
-    print(f"   SUPABASE_URL: {'✅ Set' if os.getenv('SUPABASE_URL') else '❌ Missing (optional)'}")
+    print("Configuration loaded:")
+    print(f"   DISCORD_APPLICATION_ID: {'Set' if DISCORD_APPLICATION_ID else 'Missing'}")
+    print(f"   DISCORD_CLIENT_SECRET: {'Set' if DISCORD_CLIENT_SECRET else 'Missing'}")
+    print(f"   DISCORD_PUBLIC_KEY: {'Set' if DISCORD_PUBLIC_KEY else 'Missing'}")
+    print(f"   DISCORD_TOKEN: {'Set (legacy)' if DISCORD_TOKEN else 'Missing (legacy)'}")
+    print(f"   GUILD_ID: {'Set' if GUILD_ID else 'Missing (optional)'}")
+    print(f"   OPENAI_API_KEY: {'Set' if os.getenv('OPENAI_API_KEY') else 'Missing'}")
+    print(f"   OPENAI_TEXT_MODEL: {os.getenv('OPENAI_TEXT_MODEL') or 'gpt-5.5-mini (default)'}")
+    print(f"   OPENAI_IMAGE_MODEL: {os.getenv('OPENAI_IMAGE_MODEL') or 'gpt-image-2 (default)'}")
+    print(f"   IMAGE_UPLOAD_DIR: {'Set' if os.getenv('IMAGE_UPLOAD_DIR') else 'Missing (optional)'}")
+    print(f"   IMAGE_PUBLIC_BASE_URL: {'Set' if os.getenv('IMAGE_PUBLIC_BASE_URL') else 'Missing (optional)'}")
+    print(f"   SUPABASE_URL: {'Set' if os.getenv('SUPABASE_URL') else 'Missing (optional)'}")
     # Do not print keys themselves; only signal presence for debugging
-    print(f"   SUPABASE_ANON_KEY: {'✅ Set' if os.getenv('SUPABASE_ANON_KEY') else '❌ Missing'}")
-    print(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅ Set' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else '❌ Missing'}")
+    print(f"   SUPABASE_ANON_KEY: {'Set' if os.getenv('SUPABASE_ANON_KEY') else 'Missing'}")
+    print(f"   SUPABASE_SERVICE_ROLE_KEY: {'Set' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else 'Missing'}")
     
     # Admin Configuration
     ADMIN_USER_IDS: List[int] = [
@@ -50,7 +59,7 @@ class Config:
     DEFAULT_AI_PARAMS = {
         "temperature": 0.7,
         "max_tokens": 1000,
-        "model": "gpt-3.5-turbo",
+        "model": os.getenv('OPENAI_TEXT_MODEL', 'gpt-5.5-mini'),
         "personality": "helpful and professional"
     }
     
@@ -61,12 +70,23 @@ class Config:
     
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    OPENAI_IMAGE_MODEL = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-1')
+    OPENAI_TEXT_MODEL = os.getenv('OPENAI_TEXT_MODEL', 'gpt-5.5-mini')
+    OPENAI_RESPONSE_STORE = _env_bool('OPENAI_RESPONSE_STORE', True)
+    OPENAI_CONVERSATION_STRATEGY = os.getenv('OPENAI_CONVERSATION_STRATEGY', 'conversations')
+    OPENAI_TIMEOUT_SECONDS = int(os.getenv('OPENAI_TIMEOUT_SECONDS', '90'))
+    OPENAI_MAX_RETRIES = int(os.getenv('OPENAI_MAX_RETRIES', '2'))
+    OPENAI_MAX_CONCURRENT_TEXT = int(os.getenv('OPENAI_MAX_CONCURRENT_TEXT', '4'))
+    OPENAI_MAX_CONCURRENT_IMAGE = int(os.getenv('OPENAI_MAX_CONCURRENT_IMAGE', '2'))
+
+    OPENAI_IMAGE_MODEL = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-2')
     OPENAI_IMAGE_SIZE = os.getenv('OPENAI_IMAGE_SIZE', '1024x1024')
-    OPENAI_IMAGE_QUALITY = os.getenv('OPENAI_IMAGE_QUALITY', 'standard')
+    OPENAI_IMAGE_QUALITY = os.getenv('OPENAI_IMAGE_QUALITY', 'medium')
+    OPENAI_IMAGE_OUTPUT_FORMAT = os.getenv('OPENAI_IMAGE_OUTPUT_FORMAT', 'png')
+    OPENAI_IMAGE_MODERATION = os.getenv('OPENAI_IMAGE_MODERATION', 'auto')
+    OPENAI_IMAGE_BACKGROUND = os.getenv('OPENAI_IMAGE_BACKGROUND', 'auto')
 
     # Image storage configuration (optional)
-    IMAGE_UPLOAD_DIR = os.getenv('IMAGE_UPLOAD_DIR')
+    IMAGE_UPLOAD_DIR = os.getenv('IMAGE_UPLOAD_DIR', 'generated_images')
     IMAGE_PUBLIC_BASE_URL = os.getenv('IMAGE_PUBLIC_BASE_URL')
     
     # Permission Levels
@@ -98,8 +118,8 @@ class Config:
     LINEAR_TEAM_ID = os.getenv('LINEAR_TEAM_ID')
     LINEAR_PROJECT_ID = os.getenv('LINEAR_PROJECT_ID')  # Optional default project
     try:
-        print(f"   LINEAR_API_KEY: {'✅ Set' if LINEAR_API_KEY else '❌ Missing'}")
-        print(f"   LINEAR_TEAM_ID: {'✅ Set' if LINEAR_TEAM_ID else '❌ Missing'}")
-        print(f"   LINEAR_PROJECT_ID: {'✅ Set' if LINEAR_PROJECT_ID else '❌ Missing (optional)'}")
+        print(f"   LINEAR_API_KEY: {'Set' if LINEAR_API_KEY else 'Missing'}")
+        print(f"   LINEAR_TEAM_ID: {'Set' if LINEAR_TEAM_ID else 'Missing'}")
+        print(f"   LINEAR_PROJECT_ID: {'Set' if LINEAR_PROJECT_ID else 'Missing (optional)'}")
     except Exception:
         pass

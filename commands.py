@@ -7,7 +7,6 @@ import json
 import re
 import httpx
 from config import Config
-from image_generator import generate_image
 
 # Import bot instance
 # Note: The bot instance will be provided by the loader via the setup(bot) function.
@@ -80,7 +79,7 @@ class SocialCommands(commands.Cog):
                 caption_prompt += f" Highlight or promote this website section: {section_text}."
             if keywords_text:
                 caption_prompt += f" Consider these keywords if relevant: {keywords_text}."
-            caption = await employee.generate_response(caption_prompt)
+            caption = await self.bot.generate_employee_response(employee, caption_prompt)
 
             image_meta: Dict[str, Any] = {}
             if image_mode == "generate":
@@ -89,7 +88,7 @@ class SocialCommands(commands.Cog):
                     image_prompt += f" Section: {section_text}."
                 image_prompt += f" Theme or focus: {prompt}. Style: clean, modern, vibrant, no text."
                 try:
-                    image_result = await asyncio.to_thread(generate_image, image_prompt)
+                    image_result = await self.bot.generate_social_image(image_prompt)
                     image_url = image_result.get("image_url")
                     image_meta = {
                         "image_prompt": image_prompt,
@@ -151,8 +150,11 @@ class SocialCommands(commands.Cog):
             if image_mode == "generate" and not image_url:
                 await ctx.send("⚠️ Image generation did not provide a usable URL. Draft created without an image.")
 
+        except asyncio.TimeoutError:
+            await ctx.send("⏳ The social generation request timed out. Please try again.")
         except Exception as e:
-            await ctx.send(f"❌ Error creating social post: {str(e)}")
+            print(f"Error creating social post: {e}")
+            await ctx.send("❌ Failed to create social post draft due to an unexpected error.")
 
 
 class AdminCommands(commands.Cog):
@@ -1011,22 +1013,24 @@ class ChatGroup(commands.Cog):
     @chat.command(name="message")
     async def chat_message(self, ctx, employee: str, *, message: str):
         try:
-            try:
-                await self.bot.send_message_as_employee(ctx.channel, employee, message, ctx.author.id)
-            except TypeError:
-                await self.bot.send_message_as_employee(ctx.channel, employee, message)
+            context = f"Discord user_id={ctx.author.id}"
+            await self.bot.send_message_as_employee(ctx.channel, employee, message, context)
+        except asyncio.TimeoutError:
+            await ctx.send("⏳ The AI request timed out. Please try again.")
         except Exception as e:
-            await ctx.send(f"❌ Error chatting with employee: {str(e)}")
+            print(f"chat_message error: {e}")
+            await ctx.send("❌ Failed to send message to that employee.")
 
     @chat.command(name="ask")
     async def chat_ask(self, ctx, employee: str, *, question: str):
         try:
-            try:
-                await self.bot.send_message_as_employee(ctx.channel, employee, question, ctx.author.id)
-            except TypeError:
-                await self.bot.send_message_as_employee(ctx.channel, employee, question)
+            context = f"Discord user_id={ctx.author.id}"
+            await self.bot.send_message_as_employee(ctx.channel, employee, question, context)
+        except asyncio.TimeoutError:
+            await ctx.send("⏳ The AI request timed out. Please try again.")
         except Exception as e:
-            await ctx.send(f"❌ Error asking question: {str(e)}")
+            print(f"chat_ask error: {e}")
+            await ctx.send("❌ Failed to submit that question to the employee.")
 
 
 class AdminGroup(commands.Cog):
@@ -1048,7 +1052,7 @@ class AdminGroup(commands.Cog):
             await ctx.send("❌ Invalid permission level! Use 1 (User), 2 (Moderator), or 3 (Admin)")
             return
         try:
-            success = await self.bot.db.set_user_permission(user.id, level)
+            success = await self.bot.db.set_user_permission(user.id, level, ctx.author.id)
             if success:
                 level_names = {1: "User", 2: "Moderator", 3: "Admin"}
                 embed = discord.Embed(
@@ -1079,6 +1083,8 @@ class AdminGroup(commands.Cog):
 
 
 async def setup(bot):
+    # Intentionally register only the grouped command surfaces.
+    # Legacy flat cogs in this module are kept for reference and are not loaded.
     await bot.add_cog(AIGroup(bot))
     await bot.add_cog(ChatGroup(bot))
     await bot.add_cog(AdminGroup(bot))
